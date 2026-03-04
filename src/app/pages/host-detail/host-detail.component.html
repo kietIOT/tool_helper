@@ -1,0 +1,251 @@
+@if (host) {
+  <div class="host-detail">
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+      <a routerLink="/dashboard">Dashboard</a>
+      <span class="sep">/</span>
+      <a routerLink="/hosts">Hosts</a>
+      <span class="sep">/</span>
+      <span class="current">{{ host.name }}</span>
+    </div>
+
+    <!-- Header -->
+    <div class="page-header">
+      <div class="host-title">
+        <span class="status-indicator"
+              [class.online]="host.status === 'online'"
+              [class.offline]="host.status === 'offline'">
+        </span>
+        <div>
+          <h1>{{ host.name }}</h1>
+          <div class="host-meta">
+            <span class="mono">{{ host.ip }}</span>
+            <span class="divider">|</span>
+            <span class="mono">{{ host.url }}</span>
+            @if (host.description) {
+              <span class="divider">|</span>
+              <span>{{ host.description }}</span>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline" (click)="refresh()">
+          <span class="material-symbols-outlined" [class.spin]="loading">refresh</span>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    @if (stats) {
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="material-symbols-outlined">memory</span>
+            <span>CPU Usage</span>
+          </div>
+          <div class="stat-card-value">{{ stats.cpuUsage }}%</div>
+          <div class="stat-card-bar">
+            <div class="bar-track">
+              <div class="bar-fill" [style.width.%]="stats.cpuUsage" [style.background]="getBarColor(stats.cpuUsage)"></div>
+            </div>
+          </div>
+          <div class="stat-card-detail">{{ stats.cpuCores }} cores | Load: {{ stats.loadAverage.join(', ') }}</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="material-symbols-outlined">developer_board</span>
+            <span>Memory</span>
+          </div>
+          <div class="stat-card-value">{{ getMemoryPercent() }}%</div>
+          <div class="stat-card-bar">
+            <div class="bar-track">
+              <div class="bar-fill" [style.width.%]="getMemoryPercent()" [style.background]="getBarColor(getMemoryPercent())"></div>
+            </div>
+          </div>
+          <div class="stat-card-detail">{{ stats.memoryUsed | fileSize }} / {{ stats.memoryTotal | fileSize }}</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="material-symbols-outlined">hard_drive</span>
+            <span>Disk</span>
+          </div>
+          <div class="stat-card-value">{{ getDiskPercent() }}%</div>
+          <div class="stat-card-bar">
+            <div class="bar-track">
+              <div class="bar-fill" [style.width.%]="getDiskPercent()" [style.background]="getBarColor(getDiskPercent())"></div>
+            </div>
+          </div>
+          <div class="stat-card-detail">{{ stats.diskUsed | fileSize }} / {{ stats.diskTotal | fileSize }}</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <span class="material-symbols-outlined">swap_vert</span>
+            <span>Network I/O</span>
+          </div>
+          <div class="stat-card-value-sm">
+            <span>↓ {{ stats.networkIn | fileSize }}/s</span>
+            <span>↑ {{ stats.networkOut | fileSize }}/s</span>
+          </div>
+          <div class="stat-card-detail">Uptime: {{ stats.uptime }}</div>
+        </div>
+      </div>
+    }
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab" [class.active]="activeTab === 'services'" (click)="activeTab = 'services'">
+        <span class="material-symbols-outlined">widgets</span>
+        Services ({{ services.length }})
+      </button>
+      <button class="tab" [class.active]="activeTab === 'stats'" (click)="activeTab = 'stats'">
+        <span class="material-symbols-outlined">monitoring</span>
+        Statistics
+      </button>
+    </div>
+
+    <!-- Services Tab -->
+    @if (activeTab === 'services') {
+      <div class="services-header">
+        <div class="services-summary">
+          <span class="badge badge-success">{{ runningCount() }} running</span>
+          <span class="badge badge-danger">{{ stoppedCount() }} stopped</span>
+        </div>
+      </div>
+
+      <div class="services-grid">
+        @for (svc of services; track trackBySvcId($index, svc)) {
+          <div class="service-card" [class.stopped]="svc.status !== 'running'">
+            <div class="svc-header">
+              <div class="svc-info">
+                <span class="svc-status-dot" [class]="'dot-' + svc.status"></span>
+                <div>
+                  <h3 class="svc-name">{{ svc.name }}</h3>
+                  <span class="svc-image">{{ svc.image }}</span>
+                </div>
+              </div>
+              <span class="status-badge" [class]="'status-' + svc.status">{{ svc.status }}</span>
+            </div>
+
+            <div class="svc-stats">
+              <div class="svc-stat">
+                <span class="svc-stat-label">CPU</span>
+                <div class="mini-bar">
+                  <div class="mini-fill" [style.width.%]="svc.cpuUsage" [style.background]="getBarColor(svc.cpuUsage)"></div>
+                </div>
+                <span class="svc-stat-value">{{ svc.cpuUsage }}%</span>
+              </div>
+              <div class="svc-stat">
+                <span class="svc-stat-label">MEM</span>
+                <div class="mini-bar">
+                  <div class="mini-fill" [style.width.%]="getServiceMemPercent(svc)" [style.background]="getBarColor(getServiceMemPercent(svc))"></div>
+                </div>
+                <span class="svc-stat-value">{{ svc.memoryUsage | fileSize }}</span>
+              </div>
+            </div>
+
+            @if (svc.ports.length > 0) {
+              <div class="svc-ports">
+                @for (port of svc.ports; track port) {
+                  <span class="port-badge">{{ port }}</span>
+                }
+              </div>
+            }
+
+            <div class="svc-meta">
+              <span>{{ svc.state }}</span>
+              @if (svc.restartCount > 0) {
+                <span class="restart-count">{{ svc.restartCount }} restarts</span>
+              }
+            </div>
+
+            <div class="svc-actions">
+              @if (svc.status === 'running') {
+                <button class="btn btn-sm btn-warning"
+                        (click)="stopService(svc)"
+                        [disabled]="actionInProgress === svc.id">
+                  <span class="material-symbols-outlined">stop</span> Stop
+                </button>
+                <button class="btn btn-sm btn-outline"
+                        (click)="restartService(svc)"
+                        [disabled]="actionInProgress === svc.id">
+                  <span class="material-symbols-outlined">restart_alt</span> Restart
+                </button>
+              } @else {
+                <button class="btn btn-sm btn-success"
+                        (click)="startService(svc)"
+                        [disabled]="actionInProgress === svc.id">
+                  <span class="material-symbols-outlined">play_arrow</span> Start
+                </button>
+              }
+              <button class="btn btn-sm btn-danger"
+                      (click)="removeService(svc)"
+                      [disabled]="actionInProgress === svc.id">
+                <span class="material-symbols-outlined">delete</span>
+              </button>
+              @if (actionInProgress === svc.id) {
+                <span class="material-symbols-outlined spin action-spinner">progress_activity</span>
+              }
+            </div>
+          </div>
+        } @empty {
+          <div class="empty-state">
+            <span class="material-symbols-outlined">widgets</span>
+            <p>No services found on this host</p>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- Stats Tab -->
+    @if (activeTab === 'stats' && stats) {
+      <div class="stats-detail-grid">
+        <div class="detail-card">
+          <h3>System Information</h3>
+          <div class="detail-row">
+            <span class="detail-label">Uptime</span>
+            <span class="detail-value">{{ stats.uptime }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">CPU Cores</span>
+            <span class="detail-value">{{ stats.cpuCores }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Load Average</span>
+            <span class="detail-value mono">{{ stats.loadAverage.join('  /  ') }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Total Memory</span>
+            <span class="detail-value">{{ stats.memoryTotal | fileSize }}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Total Disk</span>
+            <span class="detail-value">{{ stats.diskTotal | fileSize }}</span>
+          </div>
+        </div>
+
+        <div class="detail-card">
+          <h3>Network</h3>
+          <div class="detail-row">
+            <span class="detail-label">Inbound</span>
+            <span class="detail-value">{{ stats.networkIn | fileSize }}/s</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Outbound</span>
+            <span class="detail-value">{{ stats.networkOut | fileSize }}/s</span>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="not-found">
+    <span class="material-symbols-outlined">error</span>
+    <h2>Host not found</h2>
+    <a routerLink="/hosts" class="btn btn-primary">Back to Hosts</a>
+  </div>
+}

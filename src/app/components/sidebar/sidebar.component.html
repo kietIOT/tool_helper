@@ -1,0 +1,54 @@
+<aside class="sidebar" [class.collapsed]="collapsed">
+  <div class="sidebar-header">
+    <div class="logo">
+      <span class="logo-icon material-symbols-outlined">hub</span>
+      @if (!collapsed) {
+        <span class="logo-text">Tool Helper</span>
+      }
+    </div>
+    <button class="toggle-btn" (click)="toggleCollapse.emit()">
+      <span class="material-symbols-outlined">
+        {{ collapsed ? 'chevron_right' : 'chevron_left' }}
+      </span>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    @for (item of navItems; track item.route) {
+      <a class="nav-item"
+         [routerLink]="item.route"
+         routerLinkActive="active">
+        <span class="material-symbols-outlined">{{ item.icon }}</span>
+        @if (!collapsed) {
+          <span class="nav-label">{{ item.label }}</span>
+        }
+      </a>
+    }
+  </nav>
+
+  @if (!collapsed) {
+    <div class="sidebar-section">
+      <div class="section-title">HOSTS</div>
+      @for (host of (hosts$ | async); track host.id) {
+        <a class="nav-item host-item"
+           [routerLink]="['/hosts', host.id]"
+           routerLinkActive="active">
+          <span class="status-dot"
+                [class.online]="host.status === 'online'"
+                [class.offline]="host.status === 'offline'">
+          </span>
+          <span class="nav-label">{{ host.name }}</span>
+        </a>
+      }
+    </div>
+  }
+
+  <div class="sidebar-footer">
+    <a class="nav-item" routerLink="/settings" routerLinkActive="active">
+      <span class="material-symbols-outlined">settings</span>
+      @if (!collapsed) {
+        <span class="nav-label">Settings</span>
+      }
+    </a>
+  </div>
+</aside>

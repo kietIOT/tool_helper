@@ -1,0 +1,106 @@
+<div class="hosts-page">
+  <div class="page-header">
+    <div>
+      <h1>Hosts</h1>
+      <p class="subtitle">Manage and monitor your servers</p>
+    </div>
+    <button class="btn btn-primary" (click)="openAddForm()">
+      <span class="material-symbols-outlined">add</span>
+      Add Host
+    </button>
+  </div>
+
+  <!-- Add/Edit Form Modal -->
+  @if (showAddForm) {
+    <div class="modal-overlay" (click)="closeForm()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>{{ editingHost ? 'Edit Host' : 'Add New Host' }}</h2>
+          <button class="btn-icon" (click)="closeForm()">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Host Name</label>
+            <input type="text" [(ngModel)]="formData.name" placeholder="e.g. Production Server" />
+          </div>
+          <div class="form-group">
+            <label>IP Address</label>
+            <input type="text" [(ngModel)]="formData.ip" placeholder="e.g. 192.168.1.10" />
+          </div>
+          <div class="form-group">
+            <label>Tool Helper API URL</label>
+            <input type="text" [(ngModel)]="formData.url" placeholder="e.g. http://192.168.1.10:3000" />
+          </div>
+          <div class="form-group">
+            <label>Description (optional)</label>
+            <textarea [(ngModel)]="formData.description" rows="3" placeholder="Notes about this host"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" (click)="closeForm()">Cancel</button>
+          <button class="btn btn-primary" (click)="saveHost()"
+                  [disabled]="!formData.name || !formData.url || !formData.ip">
+            {{ editingHost ? 'Update' : 'Add Host' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Hosts Table -->
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Name</th>
+          <th>IP Address</th>
+          <th>API URL</th>
+          <th>Description</th>
+          <th>Last Checked</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (host of hosts; track host.id) {
+          <tr>
+            <td>
+              <span class="status-dot"
+                    [class.online]="host.status === 'online'"
+                    [class.offline]="host.status === 'offline'">
+              </span>
+            </td>
+            <td>
+              <a [routerLink]="['/hosts', host.id]" class="host-link">{{ host.name }}</a>
+            </td>
+            <td class="mono">{{ host.ip }}</td>
+            <td class="mono url-cell">{{ host.url }}</td>
+            <td class="desc-cell">{{ host.description }}</td>
+            <td class="time-cell">{{ host.lastChecked ? (host.lastChecked | date:'short') : 'Never' }}</td>
+            <td class="actions-cell">
+              <button class="btn-icon" title="Edit" (click)="openEditForm(host)">
+                <span class="material-symbols-outlined">edit</span>
+              </button>
+              <button class="btn-icon danger" title="Delete" (click)="deleteHost(host)">
+                <span class="material-symbols-outlined">delete</span>
+              </button>
+              <a [routerLink]="['/hosts', host.id]" class="btn-icon" title="View Details">
+                <span class="material-symbols-outlined">open_in_new</span>
+              </a>
+            </td>
+          </tr>
+        } @empty {
+          <tr>
+            <td colspan="7" class="empty-state">
+              <span class="material-symbols-outlined">dns</span>
+              <p>No hosts configured yet</p>
+              <button class="btn btn-primary btn-sm" (click)="openAddForm()">Add your first host</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>

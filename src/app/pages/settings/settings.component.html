@@ -1,0 +1,76 @@
+<div class="settings-page">
+  <div class="page-header">
+    <h1>Settings</h1>
+    <p class="subtitle">Configure Tool Helper dashboard</p>
+  </div>
+
+  <div class="settings-grid">
+    <div class="card">
+      <div class="card-header">
+        <h2>General</h2>
+      </div>
+      <div class="card-body">
+        <div class="setting-item">
+          <div class="setting-info">
+            <strong>Auto-Refresh Interval</strong>
+            <p>How often the dashboard refreshes data (in seconds)</p>
+          </div>
+          <input type="number" [(ngModel)]="refreshInterval" min="5" max="300" class="number-input" />
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <strong>Use Mock Data</strong>
+            <p>Use generated mock data instead of real API calls (for development)</p>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" [(ngModel)]="useMockData" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Data Management</h2>
+      </div>
+      <div class="card-body">
+        <div class="setting-item">
+          <div class="setting-info">
+            <strong>Export Configuration</strong>
+            <p>Download host configuration as JSON file</p>
+          </div>
+          <button class="btn btn-outline" (click)="exportConfig()">
+            <span class="material-symbols-outlined">download</span>
+            Export
+          </button>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <strong>Clear All Hosts</strong>
+            <p>Remove all saved host configurations and reset to defaults</p>
+          </div>
+          <button class="btn btn-danger" (click)="clearHosts()">
+            <span class="material-symbols-outlined">delete_forever</span>
+            Clear
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>About</h2>
+      </div>
+      <div class="card-body">
+        <div class="about-info">
+          <p><strong>Tool Helper Dashboard</strong></p>
+          <p>A web UI for managing and monitoring Docker services across multiple Linux hosts.</p>
+          <p class="version">Version 1.0.0</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

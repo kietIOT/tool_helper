@@ -1,0 +1,150 @@
+<div class="deploy-page">
+  <div class="page-header">
+    <div>
+      <h1>Deploy Service</h1>
+      <p class="subtitle">Deploy a new Docker container to a host</p>
+    </div>
+  </div>
+
+  <div class="deploy-grid">
+    <div class="deploy-form-container">
+      <div class="card">
+        <div class="card-header">
+          <h2>Deployment Configuration</h2>
+        </div>
+        <div class="card-body">
+          <!-- Target Host -->
+          <div class="form-group">
+            <label>Target Host <span class="required">*</span></label>
+            <select [(ngModel)]="selectedHostId">
+              @for (host of hosts; track host.id) {
+                <option [value]="host.id">
+                  {{ host.name }} ({{ host.ip }})
+                </option>
+              }
+            </select>
+          </div>
+
+          <!-- Service Name -->
+          <div class="form-group">
+            <label>Service Name <span class="required">*</span></label>
+            <input type="text" [(ngModel)]="form.serviceName" placeholder="e.g. my-api-service" />
+          </div>
+
+          <!-- Image -->
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label>Docker Image <span class="required">*</span></label>
+              <input type="text" [(ngModel)]="form.image" placeholder="e.g. nginx, node, myregistry/myimage" />
+            </div>
+            <div class="form-group flex-1">
+              <label>Tag</label>
+              <input type="text" [(ngModel)]="form.tag" placeholder="latest" />
+            </div>
+          </div>
+
+          <!-- Ports -->
+          <div class="form-group">
+            <label>Ports</label>
+            <input type="text" [(ngModel)]="portsInput" placeholder="e.g. 8080:80, 443:443" />
+            <span class="form-hint">Comma-separated, format: host:container</span>
+          </div>
+
+          <!-- Volumes -->
+          <div class="form-group">
+            <label>Volumes</label>
+            <input type="text" [(ngModel)]="volumesInput" placeholder="e.g. /host/path:/container/path" />
+            <span class="form-hint">Comma-separated bind mounts</span>
+          </div>
+
+          <!-- Environment Variables -->
+          <div class="form-group">
+            <label>Environment Variables</label>
+            <textarea [(ngModel)]="envInput" rows="4" placeholder="KEY=value&#10;DATABASE_URL=postgres://...&#10;NODE_ENV=production"></textarea>
+            <span class="form-hint">One per line, format: KEY=value</span>
+          </div>
+
+          <!-- Restart Policy -->
+          <div class="form-group">
+            <label>Restart Policy</label>
+            <select [(ngModel)]="form.restart">
+              <option value="no">No</option>
+              <option value="always">Always</option>
+              <option value="unless-stopped">Unless Stopped</option>
+              <option value="on-failure">On Failure</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card-footer">
+          <button class="btn btn-outline" (click)="resetForm()">Reset</button>
+          <button class="btn btn-primary btn-lg"
+                  (click)="deploy()"
+                  [disabled]="deploying || !form.serviceName || !form.image || !selectedHostId">
+            @if (deploying) {
+              <span class="material-symbols-outlined spin">progress_activity</span>
+              Deploying...
+            } @else {
+              <span class="material-symbols-outlined">rocket_launch</span>
+              Deploy
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result / Info panel -->
+    <div class="deploy-info">
+      <!-- Deploy Result -->
+      @if (result) {
+        <div class="card" [class.result-success]="result.success" [class.result-error]="!result.success">
+          <div class="card-header">
+            <h2>
+              <span class="material-symbols-outlined">
+                {{ result.success ? 'check_circle' : 'error' }}
+              </span>
+              {{ result.success ? 'Deploy Successful' : 'Deploy Failed' }}
+            </h2>
+          </div>
+          <div class="card-body">
+            <p class="result-message">{{ result.message }}</p>
+            @if (result.containerId) {
+              <div class="result-detail">
+                <span class="result-label">Container ID:</span>
+                <code>{{ result.containerId }}</code>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Quick Info -->
+      <div class="card">
+        <div class="card-header">
+          <h2>
+            <span class="material-symbols-outlined">info</span>
+            Quick Guide
+          </h2>
+        </div>
+        <div class="card-body">
+          <div class="info-item">
+            <strong>Service Name</strong>
+            <p>Used as the container name. Must be unique on the target host.</p>
+          </div>
+          <div class="info-item">
+            <strong>Docker Image</strong>
+            <p>The image to pull and run. Can be from Docker Hub or a private registry.</p>
+          </div>
+          <div class="info-item">
+            <strong>Ports</strong>
+            <p>Map host ports to container ports. Format: <code>hostPort:containerPort</code></p>
+          </div>
+          <div class="info-item">
+            <strong>Environment</strong>
+            <p>Pass configuration to the container via environment variables.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
