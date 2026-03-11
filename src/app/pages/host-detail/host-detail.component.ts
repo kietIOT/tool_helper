@@ -1,39 +1,56 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subject, takeUntil } from 'rxjs';
-import { Host, HostStats, DockerService } from '../../models';
-import { HostStore, HostApiService, MockDataService } from '../../services';
-import { FileSizePipe } from '../../pipes/file-size.pipe';
+import { Subject, takeUntil, interval } from 'rxjs';
+import {
+  HostDetailDto,
+  ServiceDto,
+  ContainerStat,
+  DiskInfo,
+  HealthResponse,
+  CreateServiceRequest,
+  UpdateServiceRequest,
+} from '../../models';
+import { HostManagementApiService, ToolHelperApiService } from '../../services';
 
 @Component({
   selector: 'app-host-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, FileSizePipe],
+  imports: [CommonModule, RouterLink, FormsModule],
   templateUrl: './host-detail.component.html',
   styleUrl: './host-detail.component.scss',
 })
 export class HostDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
-  private hostStore = inject(HostStore);
-  private api = inject(HostApiService);
-  private mock = inject(MockDataService);
+  private api = inject(HostManagementApiService);
+  private helperApi = inject(ToolHelperApiService);
   private destroy$ = new Subject<void>();
 
-  host: Host | null = null;
-  stats: HostStats | null = null;
-  services: DockerService[] = [];
+  host: HostDetailDto | null = null;
+  health: HealthResponse | null = null;
+  containers: ContainerStat[] = [];
+  disks: DiskInfo[] = [];
   loading = true;
-  activeTab: 'services' | 'stats' | 'logs' = 'services';
-  actionInProgress: string | null = null;
+  activeTab: 'services' | 'containers' | 'disk' = 'services';
+  checking = false;
+
+  // Service form
+  showServiceForm = false;
+  editingService: ServiceDto | null = null;
+  savingService = false;
+  serviceForm: CreateServiceRequest = {
+    name: '', type: 'DockerCompose',
+  };
 
   ngOnInit(): void {
     this.route.params.pipe(takeUntil(this.destroy$)).subscribe(params => {
       const id = params['id'];
-      this.host = this.hostStore.getHostById(id) ?? null;
-      if (this.host) {
-        this.loadHostData();
-      }
+      this.loadHost(id);
+    });
+
+    interval(30000).pipe(takeUntil(this.destroy$)).subscribe(() => {
+      if (this.host) this.loadMonitorData();
     });
   }
 
@@ -42,98 +59,152 @@ export class HostDetailComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  loadHostData(): void {
-    if (!this.host) return;
+  private get agentUrl(): string {
+    if (!this.host) return '';
+    return `http://${this.host.ipAddress}:${this.host.agentPort}`;
+  }
+
+  loadHost(hostId: string): void {
     this.loading = true;
-
-    // Mock data for dev — replace with real API
-    this.hostStore.updateHostStatus(this.host.id, 'online');
-    this.stats = this.mock.getMockStats();
-    this.services = this.mock.getMockServices(this.host.name);
-    this.loading = false;
-
-    // Real API:
-    // this.api.checkHealth(this.host).subscribe();
-    // this.api.getHostStats(this.host).subscribe(s => this.stats = s);
-    // this.api.getServices(this.host).subscribe(s => { this.services = s; this.loading = false; });
+    this.api.getHost(hostId).pipe(takeUntil(this.destroy$)).subscribe(res => {
+      if (res.isSuccess && res.data) {
+        this.host = res.data;
+        this.loadMonitorData();
+      }
+      this.loading = false;
+    });
   }
 
-  getMemoryPercent(): number {
-    if (!this.stats) return 0;
-    return Math.round((this.stats.memoryUsed / this.stats.memoryTotal) * 100);
+  loadMonitorData(): void {
+    if (!this.host) return;
+    const url = this.agentUrl;
+
+    this.helperApi.healthCheck(url).pipe(takeUntil(this.destroy$)).subscribe(h => {
+      this.health = h;
+    });
+
+    this.helperApi.getContainerStats(url).pipe(takeUntil(this.destroy$)).subscribe(res => {
+      this.containers = res.isSuccess && res.data ? res.data : [];
+    });
+
+    this.helperApi.getDiskUsage(url).pipe(takeUntil(this.destroy$)).subscribe(res => {
+      this.disks = res.isSuccess && res.data ? res.data : [];
+    });
   }
 
-  getDiskPercent(): number {
-    if (!this.stats) return 0;
-    return Math.round((this.stats.diskUsed / this.stats.diskTotal) * 100);
+  triggerCheck(): void {
+    if (!this.host) return;
+    this.checking = true;
+    this.helperApi.triggerMonitorCheck(this.agentUrl).pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.checking = false;
+      this.loadMonitorData();
+    });
   }
 
-  getBarColor(value: number): string {
-    if (value > 80) return '#ef4444';
-    if (value > 60) return '#f59e0b';
+  // ============ Service CRUD ============
+
+  openAddService(): void {
+    this.serviceForm = { name: '', type: 'DockerCompose' };
+    this.editingService = null;
+    this.showServiceForm = true;
+  }
+
+  openEditService(svc: ServiceDto): void {
+    this.serviceForm = {
+      name: svc.name,
+      description: svc.description,
+      type: svc.type,
+      port: svc.port,
+      healthCheckUrl: svc.healthCheckUrl,
+      imageName: svc.imageName,
+      version: svc.version,
+      composeFilePath: svc.composeFilePath,
+      workingDirectory: svc.workingDirectory,
+      dockerfilePath: svc.dockerfilePath,
+      containerName: svc.containerName,
+      deployCommand: svc.deployCommand,
+      stopCommand: svc.stopCommand,
+      restartCommand: svc.restartCommand,
+    };
+    this.editingService = svc;
+    this.showServiceForm = true;
+  }
+
+  closeServiceForm(): void {
+    this.showServiceForm = false;
+    this.editingService = null;
+  }
+
+  saveService(): void {
+    if (!this.host || !this.serviceForm.name) return;
+    this.savingService = true;
+
+    if (this.editingService) {
+      const req: UpdateServiceRequest = { ...this.serviceForm };
+      this.api.updateService(this.host.id, this.editingService.id, req)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(res => {
+          this.savingService = false;
+          if (res.isSuccess) {
+            this.closeServiceForm();
+            this.loadHost(this.host!.id);
+          } else {
+            alert(res.message || 'Update failed');
+          }
+        });
+    } else {
+      this.api.createService(this.host.id, this.serviceForm)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(res => {
+          this.savingService = false;
+          if (res.isSuccess) {
+            this.closeServiceForm();
+            this.loadHost(this.host!.id);
+          } else {
+            alert(res.message || 'Create failed');
+          }
+        });
+    }
+  }
+
+  deleteService(svc: ServiceDto): void {
+    if (!this.host) return;
+    if (confirm(`Delete service "${svc.name}"? All deployment histories will be removed.`)) {
+      this.api.deleteService(this.host.id, svc.id).pipe(takeUntil(this.destroy$)).subscribe(res => {
+        if (res.isSuccess) {
+          this.loadHost(this.host!.id);
+        } else {
+          alert(res.message || 'Delete failed');
+        }
+      });
+    }
+  }
+
+  // ============ Helpers ============
+
+  getCpuColor(cpu: number): string {
+    if (cpu >= 80) return '#ef4444';
+    if (cpu >= 60) return '#f59e0b';
     return '#22c55e';
   }
 
-  getServiceMemPercent(svc: DockerService): number {
-    if (!svc.memoryLimit) return 0;
-    return Math.round((svc.memoryUsage / svc.memoryLimit) * 100);
+  getDiskColor(percent: number): string {
+    if (percent >= 95) return '#ef4444';
+    if (percent >= 85) return '#f59e0b';
+    return '#22c55e';
   }
 
-  runningCount(): number {
-    return this.services.filter(s => s.status === 'running').length;
-  }
-
-  stoppedCount(): number {
-    return this.services.filter(s => s.status !== 'running').length;
-  }
-
-  startService(svc: DockerService): void {
-    if (!this.host) return;
-    this.actionInProgress = svc.id;
-    // Mock
-    setTimeout(() => {
-      svc.status = 'running';
-      svc.state = 'Up just now';
-      this.actionInProgress = null;
-    }, 1000);
-    // Real: this.api.startService(this.host, svc.id).subscribe(ok => { ... });
-  }
-
-  stopService(svc: DockerService): void {
-    if (!this.host) return;
-    this.actionInProgress = svc.id;
-    setTimeout(() => {
-      svc.status = 'stopped';
-      svc.state = 'Exited (0) just now';
-      this.actionInProgress = null;
-    }, 1000);
-  }
-
-  restartService(svc: DockerService): void {
-    if (!this.host) return;
-    this.actionInProgress = svc.id;
-    setTimeout(() => {
-      svc.status = 'running';
-      svc.state = 'Up just now';
-      this.actionInProgress = null;
-    }, 1500);
-  }
-
-  removeService(svc: DockerService): void {
-    if (!this.host) return;
-    if (!confirm(`Remove service "${svc.name}"? This will stop and delete the container.`)) return;
-    this.actionInProgress = svc.id;
-    setTimeout(() => {
-      this.services = this.services.filter(s => s.id !== svc.id);
-      this.actionInProgress = null;
-    }, 1000);
+  getStatusColor(status: string): string {
+    switch (status) {
+      case 'Running': case 'Online': case 'Success': return '#22c55e';
+      case 'Stopped': case 'Offline': return '#64748b';
+      case 'Error': case 'Failed': return '#ef4444';
+      case 'InProgress': case 'Pending': return '#f59e0b';
+      default: return '#94a3b8';
+    }
   }
 
   refresh(): void {
-    this.loadHostData();
-  }
-
-  trackBySvcId(index: number, svc: DockerService): string {
-    return svc.id;
+    if (this.host) this.loadHost(this.host.id);
   }
 }

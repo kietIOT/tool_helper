@@ -1,2 +1,2 @@
 export * from './host.model';
-export * from './docker-service.model';
+export * from './api.model';

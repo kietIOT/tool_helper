@@ -2,7 +2,7 @@
   <div class="page-header">
     <div>
       <h1>Deploy Service</h1>
-      <p class="subtitle">Deploy a new Docker container to a host</p>
+      <p class="subtitle">Deploy services via HostManagement API</p>
     </div>
   </div>
 
@@ -16,63 +16,36 @@
           <!-- Target Host -->
           <div class="form-group">
             <label>Target Host <span class="required">*</span></label>
-            <select [(ngModel)]="selectedHostId">
+            <select [(ngModel)]="selectedHostId" (ngModelChange)="onHostChange()">
               @for (host of hosts; track host.id) {
                 <option [value]="host.id">
-                  {{ host.name }} ({{ host.ip }})
+                  {{ host.name }} ({{ host.ipAddress }})
                 </option>
               }
             </select>
           </div>
 
-          <!-- Service Name -->
+          <!-- Service Selection -->
           <div class="form-group">
-            <label>Service Name <span class="required">*</span></label>
-            <input type="text" [(ngModel)]="form.serviceName" placeholder="e.g. my-api-service" />
-          </div>
-
-          <!-- Image -->
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label>Docker Image <span class="required">*</span></label>
-              <input type="text" [(ngModel)]="form.image" placeholder="e.g. nginx, node, myregistry/myimage" />
-            </div>
-            <div class="form-group flex-1">
-              <label>Tag</label>
-              <input type="text" [(ngModel)]="form.tag" placeholder="latest" />
-            </div>
-          </div>
-
-          <!-- Ports -->
-          <div class="form-group">
-            <label>Ports</label>
-            <input type="text" [(ngModel)]="portsInput" placeholder="e.g. 8080:80, 443:443" />
-            <span class="form-hint">Comma-separated, format: host:container</span>
-          </div>
-
-          <!-- Volumes -->
-          <div class="form-group">
-            <label>Volumes</label>
-            <input type="text" [(ngModel)]="volumesInput" placeholder="e.g. /host/path:/container/path" />
-            <span class="form-hint">Comma-separated bind mounts</span>
-          </div>
-
-          <!-- Environment Variables -->
-          <div class="form-group">
-            <label>Environment Variables</label>
-            <textarea [(ngModel)]="envInput" rows="4" placeholder="KEY=value&#10;DATABASE_URL=postgres://...&#10;NODE_ENV=production"></textarea>
-            <span class="form-hint">One per line, format: KEY=value</span>
-          </div>
-
-          <!-- Restart Policy -->
-          <div class="form-group">
-            <label>Restart Policy</label>
-            <select [(ngModel)]="form.restart">
-              <option value="no">No</option>
-              <option value="always">Always</option>
-              <option value="unless-stopped">Unless Stopped</option>
-              <option value="on-failure">On Failure</option>
-            </select>
+            <label>Service <span class="required">*</span></label>
+            @if (loadingServices) {
+              <div class="loading-inline">
+                <span class="material-symbols-outlined spin">progress_activity</span>
+                Loading services...
+              </div>
+            } @else if (services.length === 0) {
+              <div class="empty-hint">
+                <span class="material-symbols-outlined">info</span>
+                No active services on this host. Add services in Host Detail page.
+              </div>
+            } @else {
+              <select [(ngModel)]="selectedServiceName" (ngModelChange)="onServiceChange()">
+                <option value="" disabled>Select a service...</option>
+                @for (svc of services; track svc.id) {
+                  <option [value]="svc.name">{{ svc.name }} ({{ svc.type }})</option>
+                }
+              </select>
+            }
           </div>
         </div>
 
@@ -80,7 +53,7 @@
           <button class="btn btn-outline" (click)="resetForm()">Reset</button>
           <button class="btn btn-primary btn-lg"
                   (click)="deploy()"
-                  [disabled]="deploying || !form.serviceName || !form.image || !selectedHostId">
+                  [disabled]="deploying || !selectedServiceName || !selectedHostId">
             @if (deploying) {
               <span class="material-symbols-outlined spin">progress_activity</span>
               Deploying...
@@ -95,56 +68,163 @@
 
     <!-- Result / Info panel -->
     <div class="deploy-info">
-      <!-- Deploy Result -->
-      @if (result) {
-        <div class="card" [class.result-success]="result.success" [class.result-error]="!result.success">
+      @if (errorMessage && !result) {
+        <div class="card result-error">
           <div class="card-header">
             <h2>
-              <span class="material-symbols-outlined">
-                {{ result.success ? 'check_circle' : 'error' }}
-              </span>
-              {{ result.success ? 'Deploy Successful' : 'Deploy Failed' }}
+              <span class="material-symbols-outlined">error</span>
+              Deploy Failed
             </h2>
           </div>
           <div class="card-body">
-            <p class="result-message">{{ result.message }}</p>
-            @if (result.containerId) {
-              <div class="result-detail">
-                <span class="result-label">Container ID:</span>
-                <code>{{ result.containerId }}</code>
+            <p class="result-message">{{ errorMessage }}</p>
+          </div>
+        </div>
+      }
+
+      @if (result) {
+        <div class="card" [class.result-success]="result.status === 'Success'" [class.result-error]="result.status === 'Failed'">
+          <div class="card-header">
+            <h2>
+              <span class="material-symbols-outlined">
+                {{ result.status === 'Success' ? 'check_circle' : result.status === 'InProgress' ? 'hourglass_top' : 'error' }}
+              </span>
+              Deploy {{ result.status }}
+            </h2>
+          </div>
+          <div class="card-body">
+            <div class="result-meta">
+              <p><strong>Service:</strong> {{ result.serviceName }}</p>
+              <p><strong>Host:</strong> {{ result.hostName }} ({{ result.hostIp }})</p>
+              @if (result.durationMs) {
+                <p><strong>Duration:</strong> {{ result.durationMs }}ms</p>
+              }
+            </div>
+            @if (result.output) {
+              <div class="result-output">
+                <span class="result-label">Output:</span>
+                <pre class="output-block">{{ result.output }}</pre>
+              </div>
+            }
+            @if (result.errorMessage) {
+              <div class="result-output error">
+                <span class="result-label">Error:</span>
+                <pre class="output-block error-block">{{ result.errorMessage }}</pre>
               </div>
             }
           </div>
         </div>
       }
 
-      <!-- Quick Info -->
-      <div class="card">
-        <div class="card-header">
-          <h2>
-            <span class="material-symbols-outlined">info</span>
-            Quick Guide
-          </h2>
+      <!-- Selected service info -->
+      @if (selectedServiceName) {
+        @for (svc of services; track svc.id) {
+          @if (svc.name === selectedServiceName) {
+            <div class="card">
+              <div class="card-header">
+                <h2>
+                  <span class="material-symbols-outlined">info</span>
+                  Service Info
+                </h2>
+              </div>
+              <div class="card-body">
+                <div class="info-item">
+                  <strong>Name</strong>
+                  <p>{{ svc.name }}</p>
+                </div>
+                <div class="info-item">
+                  <strong>Type</strong>
+                  <p>{{ svc.type }}</p>
+                </div>
+                @if (svc.composeFilePath) {
+                  <div class="info-item">
+                    <strong>Compose File</strong>
+                    <p class="mono">{{ svc.composeFilePath }}</p>
+                  </div>
+                }
+                @if (svc.deployCommand) {
+                  <div class="info-item">
+                    <strong>Deploy Command</strong>
+                    <p class="mono">{{ svc.deployCommand }}</p>
+                  </div>
+                }
+                @if (svc.lastDeploymentStatus) {
+                  <div class="info-item">
+                    <strong>Last Deploy</strong>
+                    <p>
+                      <span [style.color]="getStatusColor(svc.lastDeploymentStatus)">{{ svc.lastDeploymentStatus }}</span>
+                      @if (svc.lastDeployedAt) {
+                        — {{ svc.lastDeployedAt | date:'short' }}
+                      }
+                    </p>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        }
+      }
+
+      <!-- Deploy History -->
+      @if (history.length > 0) {
+        <div class="card">
+          <div class="card-header">
+            <h2>
+              <span class="material-symbols-outlined">history</span>
+              Recent Deployments
+            </h2>
+          </div>
+          <div class="card-body">
+            @if (loadingHistory) {
+              <div class="loading-inline">
+                <span class="material-symbols-outlined spin">progress_activity</span>
+                Loading history...
+              </div>
+            } @else {
+              <div class="history-list">
+                @for (h of history; track h.id) {
+                  <div class="history-item">
+                    <span class="history-status" [style.color]="getStatusColor(h.status)">
+                      <span class="material-symbols-outlined">
+                        {{ h.status === 'Success' ? 'check_circle' : h.status === 'Failed' ? 'cancel' : 'hourglass_top' }}
+                      </span>
+                      {{ h.status }}
+                    </span>
+                    <span class="history-time">{{ h.startedAt | date:'short' }}</span>
+                    @if (h.triggeredBy) {
+                      <span class="history-by">by {{ h.triggeredBy }}</span>
+                    }
+                    @if (h.durationMs) {
+                      <span class="history-duration">{{ h.durationMs }}ms</span>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
         </div>
-        <div class="card-body">
-          <div class="info-item">
-            <strong>Service Name</strong>
-            <p>Used as the container name. Must be unique on the target host.</p>
+      }
+
+      @if (!selectedServiceName && !result) {
+        <div class="card">
+          <div class="card-header">
+            <h2>
+              <span class="material-symbols-outlined">info</span>
+              Quick Guide
+            </h2>
           </div>
-          <div class="info-item">
-            <strong>Docker Image</strong>
-            <p>The image to pull and run. Can be from Docker Hub or a private registry.</p>
-          </div>
-          <div class="info-item">
-            <strong>Ports</strong>
-            <p>Map host ports to container ports. Format: <code>hostPort:containerPort</code></p>
-          </div>
-          <div class="info-item">
-            <strong>Environment</strong>
-            <p>Pass configuration to the container via environment variables.</p>
+          <div class="card-body">
+            <div class="info-item">
+              <strong>Service</strong>
+              <p>Select a service registered in HostManagement. Services hold compose file paths and deploy commands.</p>
+            </div>
+            <div class="info-item">
+              <strong>What happens</strong>
+              <p>HostManagement API forwards the deploy request to the HelperTool agent on the target host, which executes <code>docker compose</code>.</p>
+            </div>
           </div>
         </div>
-      </div>
+      }
     </div>
   </div>
 </div>

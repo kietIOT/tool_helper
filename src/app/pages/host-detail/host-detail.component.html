@@ -13,15 +13,17 @@
     <div class="page-header">
       <div class="host-title">
         <span class="status-indicator"
-              [class.online]="host.status === 'online'"
-              [class.offline]="host.status === 'offline'">
+              [class.online]="host.status === 'Online'"
+              [class.offline]="host.status === 'Offline'">
         </span>
         <div>
           <h1>{{ host.name }}</h1>
           <div class="host-meta">
-            <span class="mono">{{ host.ip }}</span>
-            <span class="divider">|</span>
-            <span class="mono">{{ host.url }}</span>
+            <span class="mono">{{ host.ipAddress }}:{{ host.agentPort }}</span>
+            @if (host.os) {
+              <span class="divider">|</span>
+              <span>{{ host.os }}</span>
+            }
             @if (host.description) {
               <span class="divider">|</span>
               <span>{{ host.description }}</span>
@@ -30,6 +32,14 @@
         </div>
       </div>
       <div class="header-actions">
+        <button class="btn btn-outline" (click)="triggerCheck()" [disabled]="checking">
+          @if (checking) {
+            <span class="material-symbols-outlined spin">progress_activity</span>
+          } @else {
+            <span class="material-symbols-outlined">health_and_safety</span>
+          }
+          Monitor Check
+        </button>
         <button class="btn btn-outline" (click)="refresh()">
           <span class="material-symbols-outlined" [class.spin]="loading">refresh</span>
           Refresh
@@ -37,210 +47,333 @@
       </div>
     </div>
 
-    <!-- Stats Cards -->
-    @if (stats) {
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-card-header">
-            <span class="material-symbols-outlined">memory</span>
-            <span>CPU Usage</span>
-          </div>
-          <div class="stat-card-value">{{ stats.cpuUsage }}%</div>
-          <div class="stat-card-bar">
-            <div class="bar-track">
-              <div class="bar-fill" [style.width.%]="stats.cpuUsage" [style.background]="getBarColor(stats.cpuUsage)"></div>
-            </div>
-          </div>
-          <div class="stat-card-detail">{{ stats.cpuCores }} cores | Load: {{ stats.loadAverage.join(', ') }}</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-card-header">
-            <span class="material-symbols-outlined">developer_board</span>
-            <span>Memory</span>
-          </div>
-          <div class="stat-card-value">{{ getMemoryPercent() }}%</div>
-          <div class="stat-card-bar">
-            <div class="bar-track">
-              <div class="bar-fill" [style.width.%]="getMemoryPercent()" [style.background]="getBarColor(getMemoryPercent())"></div>
-            </div>
-          </div>
-          <div class="stat-card-detail">{{ stats.memoryUsed | fileSize }} / {{ stats.memoryTotal | fileSize }}</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-card-header">
-            <span class="material-symbols-outlined">hard_drive</span>
-            <span>Disk</span>
-          </div>
-          <div class="stat-card-value">{{ getDiskPercent() }}%</div>
-          <div class="stat-card-bar">
-            <div class="bar-track">
-              <div class="bar-fill" [style.width.%]="getDiskPercent()" [style.background]="getBarColor(getDiskPercent())"></div>
-            </div>
-          </div>
-          <div class="stat-card-detail">{{ stats.diskUsed | fileSize }} / {{ stats.diskTotal | fileSize }}</div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-card-header">
-            <span class="material-symbols-outlined">swap_vert</span>
-            <span>Network I/O</span>
-          </div>
-          <div class="stat-card-value-sm">
-            <span>↓ {{ stats.networkIn | fileSize }}/s</span>
-            <span>↑ {{ stats.networkOut | fileSize }}/s</span>
-          </div>
-          <div class="stat-card-detail">Uptime: {{ stats.uptime }}</div>
-        </div>
+    <!-- Health Status -->
+    @if (health) {
+      <div class="health-banner online">
+        <span class="material-symbols-outlined">check_circle</span>
+        <span>Agent is <strong>healthy</strong> — {{ health.timestamp }}</span>
+      </div>
+    } @else if (!loading) {
+      <div class="health-banner offline">
+        <span class="material-symbols-outlined">error</span>
+        <span>Agent is <strong>unreachable</strong> at {{ host.ipAddress }}:{{ host.agentPort }}</span>
       </div>
     }
 
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab" [class.active]="activeTab === 'services'" (click)="activeTab = 'services'">
-        <span class="material-symbols-outlined">widgets</span>
-        Services ({{ services.length }})
+        <span class="material-symbols-outlined">miscellaneous_services</span>
+        Services ({{ host.services.length }})
       </button>
-      <button class="tab" [class.active]="activeTab === 'stats'" (click)="activeTab = 'stats'">
-        <span class="material-symbols-outlined">monitoring</span>
-        Statistics
+      <button class="tab" [class.active]="activeTab === 'containers'" (click)="activeTab = 'containers'">
+        <span class="material-symbols-outlined">widgets</span>
+        Containers ({{ containers.length }})
+      </button>
+      <button class="tab" [class.active]="activeTab === 'disk'" (click)="activeTab = 'disk'">
+        <span class="material-symbols-outlined">hard_drive</span>
+        Disk Usage ({{ disks.length }})
       </button>
     </div>
 
     <!-- Services Tab -->
     @if (activeTab === 'services') {
-      <div class="services-header">
-        <div class="services-summary">
-          <span class="badge badge-success">{{ runningCount() }} running</span>
-          <span class="badge badge-danger">{{ stoppedCount() }} stopped</span>
-        </div>
+      <div class="tab-actions">
+        <button class="btn btn-primary btn-sm" (click)="openAddService()">
+          <span class="material-symbols-outlined">add</span>
+          Add Service
+        </button>
       </div>
 
-      <div class="services-grid">
-        @for (svc of services; track trackBySvcId($index, svc)) {
-          <div class="service-card" [class.stopped]="svc.status !== 'running'">
-            <div class="svc-header">
-              <div class="svc-info">
-                <span class="svc-status-dot" [class]="'dot-' + svc.status"></span>
-                <div>
-                  <h3 class="svc-name">{{ svc.name }}</h3>
-                  <span class="svc-image">{{ svc.image }}</span>
-                </div>
-              </div>
-              <span class="status-badge" [class]="'status-' + svc.status">{{ svc.status }}</span>
-            </div>
-
-            <div class="svc-stats">
-              <div class="svc-stat">
-                <span class="svc-stat-label">CPU</span>
-                <div class="mini-bar">
-                  <div class="mini-fill" [style.width.%]="svc.cpuUsage" [style.background]="getBarColor(svc.cpuUsage)"></div>
-                </div>
-                <span class="svc-stat-value">{{ svc.cpuUsage }}%</span>
-              </div>
-              <div class="svc-stat">
-                <span class="svc-stat-label">MEM</span>
-                <div class="mini-bar">
-                  <div class="mini-fill" [style.width.%]="getServiceMemPercent(svc)" [style.background]="getBarColor(getServiceMemPercent(svc))"></div>
-                </div>
-                <span class="svc-stat-value">{{ svc.memoryUsage | fileSize }}</span>
-              </div>
-            </div>
-
-            @if (svc.ports.length > 0) {
-              <div class="svc-ports">
-                @for (port of svc.ports; track port) {
-                  <span class="port-badge">{{ port }}</span>
-                }
-              </div>
-            }
-
-            <div class="svc-meta">
-              <span>{{ svc.state }}</span>
-              @if (svc.restartCount > 0) {
-                <span class="restart-count">{{ svc.restartCount }} restarts</span>
+      @if (host.services.length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-outlined">miscellaneous_services</span>
+          <p>No services configured on this host</p>
+          <button class="btn btn-primary btn-sm" (click)="openAddService()">Add a service</button>
+        </div>
+      } @else {
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Port</th>
+                <th>Last Deploy</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (svc of host.services; track svc.id) {
+                <tr>
+                  <td>
+                    <span class="status-dot" [style.background]="getStatusColor(svc.status)"></span>
+                    {{ svc.status }}
+                  </td>
+                  <td class="mono">{{ svc.name }}</td>
+                  <td>{{ svc.type }}</td>
+                  <td>{{ svc.port || '—' }}</td>
+                  <td>
+                    @if (svc.lastDeploymentStatus) {
+                      <span [style.color]="getStatusColor(svc.lastDeploymentStatus)">{{ svc.lastDeploymentStatus }}</span>
+                      @if (svc.lastDeployedAt) {
+                        <br><small>{{ svc.lastDeployedAt | date:'short' }}</small>
+                      }
+                    } @else {
+                      —
+                    }
+                  </td>
+                  <td class="actions-cell">
+                    <button class="btn-icon" title="Edit" (click)="openEditService(svc)">
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
+                    <button class="btn-icon danger" title="Delete" (click)="deleteService(svc)">
+                      <span class="material-symbols-outlined">delete</span>
+                    </button>
+                  </td>
+                </tr>
               }
-            </div>
+            </tbody>
+          </table>
+        </div>
+      }
 
-            <div class="svc-actions">
-              @if (svc.status === 'running') {
-                <button class="btn btn-sm btn-warning"
-                        (click)="stopService(svc)"
-                        [disabled]="actionInProgress === svc.id">
-                  <span class="material-symbols-outlined">stop</span> Stop
-                </button>
-                <button class="btn btn-sm btn-outline"
-                        (click)="restartService(svc)"
-                        [disabled]="actionInProgress === svc.id">
-                  <span class="material-symbols-outlined">restart_alt</span> Restart
-                </button>
-              } @else {
-                <button class="btn btn-sm btn-success"
-                        (click)="startService(svc)"
-                        [disabled]="actionInProgress === svc.id">
-                  <span class="material-symbols-outlined">play_arrow</span> Start
-                </button>
-              }
-              <button class="btn btn-sm btn-danger"
-                      (click)="removeService(svc)"
-                      [disabled]="actionInProgress === svc.id">
-                <span class="material-symbols-outlined">delete</span>
+      <!-- Service Add/Edit Modal -->
+      @if (showServiceForm) {
+        <div class="modal-overlay" (click)="closeServiceForm()">
+          <div class="modal modal-lg" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2>{{ editingService ? 'Edit Service' : 'Add Service' }}</h2>
+              <button class="btn-icon" (click)="closeServiceForm()">
+                <span class="material-symbols-outlined">close</span>
               </button>
-              @if (actionInProgress === svc.id) {
-                <span class="material-symbols-outlined spin action-spinner">progress_activity</span>
-              }
+            </div>
+            <div class="modal-body">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Service Name *</label>
+                  <input type="text" [(ngModel)]="serviceForm.name" placeholder="e.g. tcis_ttos_tadmin_api_uat" />
+                </div>
+                <div class="form-group">
+                  <label>Type</label>
+                  <select [(ngModel)]="serviceForm.type">
+                    <option value="DockerCompose">Docker Compose</option>
+                    <option value="DockerContainer">Docker Container</option>
+                    <option value="Systemd">Systemd</option>
+                    <option value="WindowsService">Windows Service</option>
+                    <option value="WebApp">Web App</option>
+                    <option value="Database">Database</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <input type="text" [(ngModel)]="serviceForm.description" placeholder="Optional description" />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Port</label>
+                  <input type="number" [(ngModel)]="serviceForm.port" placeholder="e.g. 8080" />
+                </div>
+                <div class="form-group">
+                  <label>Container Name</label>
+                  <input type="text" [(ngModel)]="serviceForm.containerName" placeholder="e.g. tadmin-api-1" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Compose File Path</label>
+                <input type="text" [(ngModel)]="serviceForm.composeFilePath" placeholder="/root/tadmin/tadmin_api.yml" />
+              </div>
+              <div class="form-group">
+                <label>Working Directory</label>
+                <input type="text" [(ngModel)]="serviceForm.workingDirectory" placeholder="/root/tadmin" />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Image Name</label>
+                  <input type="text" [(ngModel)]="serviceForm.imageName" placeholder="e.g. myregistry/app" />
+                </div>
+                <div class="form-group">
+                  <label>Version</label>
+                  <input type="text" [(ngModel)]="serviceForm.version" placeholder="e.g. latest" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Deploy Command (overrides compose)</label>
+                <input type="text" [(ngModel)]="serviceForm.deployCommand" placeholder="Custom deploy command" />
+              </div>
+              <div class="form-group">
+                <label>Health Check URL</label>
+                <input type="text" [(ngModel)]="serviceForm.healthCheckUrl" placeholder="http://localhost:8080/health" />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" (click)="closeServiceForm()">Cancel</button>
+              <button class="btn btn-primary" (click)="saveService()" [disabled]="!serviceForm.name || savingService">
+                @if (savingService) {
+                  <span class="material-symbols-outlined spin">progress_activity</span>
+                }
+                {{ editingService ? 'Update' : 'Add Service' }}
+              </button>
             </div>
           </div>
-        } @empty {
-          <div class="empty-state">
-            <span class="material-symbols-outlined">widgets</span>
-            <p>No services found on this host</p>
-          </div>
-        }
-      </div>
+        </div>
+      }
     }
 
-    <!-- Stats Tab -->
-    @if (activeTab === 'stats' && stats) {
-      <div class="stats-detail-grid">
-        <div class="detail-card">
-          <h3>System Information</h3>
-          <div class="detail-row">
-            <span class="detail-label">Uptime</span>
-            <span class="detail-value">{{ stats.uptime }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">CPU Cores</span>
-            <span class="detail-value">{{ stats.cpuCores }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Load Average</span>
-            <span class="detail-value mono">{{ stats.loadAverage.join('  /  ') }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Total Memory</span>
-            <span class="detail-value">{{ stats.memoryTotal | fileSize }}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Total Disk</span>
-            <span class="detail-value">{{ stats.diskTotal | fileSize }}</span>
-          </div>
+    <!-- Containers Tab -->
+    @if (activeTab === 'containers') {
+      @if (loading) {
+        <div class="loading-state">
+          <span class="material-symbols-outlined spin">progress_activity</span>
+          <p>Loading container stats...</p>
+        </div>
+      } @else if (containers.length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-outlined">widgets</span>
+          <p>No running containers found</p>
+        </div>
+      } @else {
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Container</th>
+                <th>CPU %</th>
+                <th>Memory Usage</th>
+                <th>MEM %</th>
+                <th>Network I/O</th>
+                <th>Block I/O</th>
+                <th>PIDs</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of containers; track c.name) {
+                <tr>
+                  <td class="container-name">
+                    <span class="material-symbols-outlined">deployed_code</span>
+                    {{ c.name }}
+                  </td>
+                  <td>
+                    <div class="inline-bar-wrap">
+                      <div class="inline-bar">
+                        <div class="inline-bar-fill" [style.width.%]="c.cpuPercent" [style.background]="getCpuColor(c.cpuPercent)"></div>
+                      </div>
+                      <span class="bar-value" [style.color]="getCpuColor(c.cpuPercent)">{{ c.cpuPercent | number:'1.1-1' }}%</span>
+                    </div>
+                  </td>
+                  <td class="mono">{{ c.memUsage }}</td>
+                  <td>
+                    <div class="inline-bar-wrap">
+                      <div class="inline-bar">
+                        <div class="inline-bar-fill" [style.width.%]="c.memPercent" [style.background]="getCpuColor(c.memPercent)"></div>
+                      </div>
+                      <span class="bar-value" [style.color]="getCpuColor(c.memPercent)">{{ c.memPercent | number:'1.1-1' }}%</span>
+                    </div>
+                  </td>
+                  <td class="mono">{{ c.netIO }}</td>
+                  <td class="mono">{{ c.blockIO }}</td>
+                  <td>{{ c.pids }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
         </div>
 
-        <div class="detail-card">
-          <h3>Network</h3>
-          <div class="detail-row">
-            <span class="detail-label">Inbound</span>
-            <span class="detail-value">{{ stats.networkIn | fileSize }}/s</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Outbound</span>
-            <span class="detail-value">{{ stats.networkOut | fileSize }}/s</span>
-          </div>
+        <!-- Container Cards (compact summary) -->
+        <div class="container-cards">
+          @for (c of containers; track c.name) {
+            <div class="container-card">
+              <div class="cc-header">
+                <span class="material-symbols-outlined">deployed_code</span>
+                <span class="cc-name">{{ c.name }}</span>
+              </div>
+              <div class="cc-stats">
+                <div class="cc-stat">
+                  <span class="cc-label">CPU</span>
+                  <div class="cc-bar">
+                    <div class="cc-bar-fill" [style.width.%]="c.cpuPercent" [style.background]="getCpuColor(c.cpuPercent)"></div>
+                  </div>
+                  <span class="cc-value">{{ c.cpuPercent | number:'1.1-1' }}%</span>
+                </div>
+                <div class="cc-stat">
+                  <span class="cc-label">MEM</span>
+                  <div class="cc-bar">
+                    <div class="cc-bar-fill" [style.width.%]="c.memPercent" [style.background]="getCpuColor(c.memPercent)"></div>
+                  </div>
+                  <span class="cc-value">{{ c.memPercent | number:'1.1-1' }}%</span>
+                </div>
+              </div>
+              <div class="cc-detail">
+                <span>{{ c.memUsage }}</span>
+                <span>{{ c.pids }} PIDs</span>
+              </div>
+            </div>
+          }
         </div>
-      </div>
+      }
     }
+
+    <!-- Disk Tab -->
+    @if (activeTab === 'disk') {
+      @if (loading) {
+        <div class="loading-state">
+          <span class="material-symbols-outlined spin">progress_activity</span>
+          <p>Loading disk info...</p>
+        </div>
+      } @else if (disks.length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-outlined">hard_drive</span>
+          <p>No disk information available</p>
+        </div>
+      } @else {
+        <div class="disk-grid">
+          @for (d of disks; track d.mountPoint) {
+            <div class="disk-card">
+              <div class="disk-header">
+                <span class="material-symbols-outlined">hard_drive</span>
+                <div>
+                  <h3 class="disk-mount">{{ d.mountPoint }}</h3>
+                  <span class="disk-fs">{{ d.filesystem }}</span>
+                </div>
+              </div>
+              <div class="disk-visual">
+                <div class="disk-ring-container">
+                  <svg viewBox="0 0 36 36" class="disk-ring">
+                    <path class="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path class="ring-fill" [style.stroke]="getDiskColor(d.usePercent)"
+                          [attr.stroke-dasharray]="d.usePercent + ', 100'"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  </svg>
+                  <span class="ring-text" [style.color]="getDiskColor(d.usePercent)">{{ d.usePercent | number:'1.0-0' }}%</span>
+                </div>
+              </div>
+              <div class="disk-details">
+                <div class="disk-row">
+                  <span class="disk-label">Size</span>
+                  <span class="disk-value">{{ d.size }}</span>
+                </div>
+                <div class="disk-row">
+                  <span class="disk-label">Used</span>
+                  <span class="disk-value">{{ d.used }}</span>
+                </div>
+                <div class="disk-row">
+                  <span class="disk-label">Available</span>
+                  <span class="disk-value">{{ d.available }}</span>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    }
+  </div>
+} @else if (loading) {
+  <div class="loading-state">
+    <span class="material-symbols-outlined spin">progress_activity</span>
+    <p>Loading host...</p>
   </div>
 } @else {
   <div class="not-found">

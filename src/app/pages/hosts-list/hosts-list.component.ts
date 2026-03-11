@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { Host, HostFormData } from '../../models';
-import { HostStore } from '../../services';
+import { HostDto, CreateHostRequest, UpdateHostRequest } from '../../models';
+import { HostStore, HostManagementApiService } from '../../services';
 
 @Component({
   selector: 'app-hosts-list',
@@ -15,18 +15,29 @@ import { HostStore } from '../../services';
 })
 export class HostsListComponent implements OnInit, OnDestroy {
   private hostStore = inject(HostStore);
+  private api = inject(HostManagementApiService);
   private destroy$ = new Subject<void>();
 
-  hosts: Host[] = [];
+  hosts: HostDto[] = [];
   showAddForm = false;
-  editingHost: Host | null = null;
+  editingHost: HostDto | null = null;
+  saving = false;
 
-  formData: HostFormData = { name: '', url: '', ip: '', description: '' };
+  formData: CreateHostRequest = {
+    name: '',
+    ipAddress: '',
+    description: '',
+    agentPort: 5155,
+    sshPort: 22,
+    sshUsername: '',
+    os: '',
+  };
 
   ngOnInit(): void {
     this.hostStore.hosts$.pipe(takeUntil(this.destroy$)).subscribe(hosts => {
       this.hosts = hosts;
     });
+    this.hostStore.loadHosts();
   }
 
   ngOnDestroy(): void {
@@ -35,13 +46,21 @@ export class HostsListComponent implements OnInit, OnDestroy {
   }
 
   openAddForm(): void {
-    this.formData = { name: '', url: '', ip: '', description: '' };
+    this.formData = { name: '', ipAddress: '', description: '', agentPort: 5155, sshPort: 22, sshUsername: '', os: '' };
     this.editingHost = null;
     this.showAddForm = true;
   }
 
-  openEditForm(host: Host): void {
-    this.formData = { name: host.name, url: host.url, ip: host.ip, description: host.description };
+  openEditForm(host: HostDto): void {
+    this.formData = {
+      name: host.name,
+      ipAddress: host.ipAddress,
+      description: host.description,
+      agentPort: host.agentPort,
+      sshPort: host.sshPort,
+      sshUsername: host.sshUsername,
+      os: host.os,
+    };
     this.editingHost = host;
     this.showAddForm = true;
   }
@@ -52,19 +71,50 @@ export class HostsListComponent implements OnInit, OnDestroy {
   }
 
   saveHost(): void {
-    if (!this.formData.name || !this.formData.url || !this.formData.ip) return;
+    if (!this.formData.name || !this.formData.ipAddress) return;
+    this.saving = true;
 
     if (this.editingHost) {
-      this.hostStore.updateHost(this.editingHost.id, this.formData);
+      const req: UpdateHostRequest = {
+        name: this.formData.name,
+        ipAddress: this.formData.ipAddress,
+        description: this.formData.description,
+        agentPort: this.formData.agentPort,
+        sshPort: this.formData.sshPort,
+        sshUsername: this.formData.sshUsername,
+        os: this.formData.os,
+      };
+      this.api.updateHost(this.editingHost.id, req).pipe(takeUntil(this.destroy$)).subscribe(res => {
+        this.saving = false;
+        if (res.isSuccess) {
+          this.closeForm();
+          this.hostStore.loadHosts();
+        } else {
+          alert(res.message || 'Update failed');
+        }
+      });
     } else {
-      this.hostStore.addHost(this.formData);
+      this.api.createHost(this.formData).pipe(takeUntil(this.destroy$)).subscribe(res => {
+        this.saving = false;
+        if (res.isSuccess) {
+          this.closeForm();
+          this.hostStore.loadHosts();
+        } else {
+          alert(res.message || 'Create failed');
+        }
+      });
     }
-    this.closeForm();
   }
 
-  deleteHost(host: Host): void {
-    if (confirm(`Are you sure you want to remove "${host.name}"?`)) {
-      this.hostStore.removeHost(host.id);
+  deleteHost(host: HostDto): void {
+    if (confirm(`Are you sure you want to remove "${host.name}"? All services and deployment histories will be deleted.`)) {
+      this.api.deleteHost(host.id).pipe(takeUntil(this.destroy$)).subscribe(res => {
+        if (res.isSuccess) {
+          this.hostStore.loadHosts();
+        } else {
+          alert(res.message || 'Delete failed');
+        }
+      });
     }
   }
 }

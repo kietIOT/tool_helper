@@ -1,6 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HostStore } from '../../services';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-settings',
@@ -10,23 +12,19 @@ import { FormsModule } from '@angular/forms';
   styleUrl: './settings.component.scss',
 })
 export class SettingsComponent {
-  refreshInterval = 30;
-  useMockData = true;
+  private hostStore = inject(HostStore);
 
-  clearHosts(): void {
-    if (confirm('This will remove all saved hosts. Are you sure?')) {
-      localStorage.removeItem('tool_helper_hosts');
-      window.location.reload();
-    }
-  }
+  refreshInterval = 30;
+  apiUrl = environment.hostManagementApiUrl;
 
   exportConfig(): void {
-    const data = localStorage.getItem('tool_helper_hosts') || '[]';
-    const blob = new Blob([data], { type: 'application/json' });
+    const hosts = this.hostStore.getHosts();
+    const config = { apiUrl: this.apiUrl, hosts };
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'tool-helper-hosts.json';
+    a.download = 'tool-helper-config.json';
     a.click();
     URL.revokeObjectURL(url);
   }

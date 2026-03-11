@@ -34,8 +34,8 @@
            [routerLink]="['/hosts', host.id]"
            routerLinkActive="active">
           <span class="status-dot"
-                [class.online]="host.status === 'online'"
-                [class.offline]="host.status === 'offline'">
+                [class.online]="host.status === 'Online'"
+                [class.offline]="host.status === 'Offline'">
           </span>
           <span class="nav-label">{{ host.name }}</span>
         </a>

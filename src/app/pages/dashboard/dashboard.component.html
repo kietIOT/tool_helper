@@ -2,7 +2,7 @@
   <div class="page-header">
     <div>
       <h1>Dashboard</h1>
-      <p class="subtitle">Monitor all hosts and services at a glance</p>
+      <p class="subtitle">Host Management — Overview</p>
     </div>
     <div class="header-actions">
       <span class="last-refresh">Last refresh: {{ lastRefresh | date:'HH:mm:ss' }}</span>
@@ -21,7 +21,7 @@
       </div>
       <div class="summary-info">
         <span class="summary-value">{{ totalHosts }}</span>
-        <span class="summary-label">Total Hosts</span>
+        <span class="summary-label">Hosts</span>
       </div>
       <div class="summary-detail">
         <span class="badge badge-success">{{ onlineHosts }} online</span>
@@ -30,192 +30,83 @@
     </div>
 
     <div class="summary-card">
-      <div class="summary-icon services-icon">
+      <div class="summary-icon containers-icon">
         <span class="material-symbols-outlined">widgets</span>
       </div>
       <div class="summary-info">
         <span class="summary-value">{{ totalServices }}</span>
-        <span class="summary-label">Total Services</span>
+        <span class="summary-label">Services</span>
       </div>
       <div class="summary-detail">
         <span class="badge badge-success">{{ runningServices }} running</span>
-        <span class="badge badge-warning">{{ stoppedServices }} stopped</span>
-      </div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-icon online-icon">
-        <span class="material-symbols-outlined">check_circle</span>
-      </div>
-      <div class="summary-info">
-        <span class="summary-value">{{ onlineHosts }}</span>
-        <span class="summary-label">Hosts Online</span>
-      </div>
-      <div class="summary-detail">
-        <div class="progress-bar-mini">
-          <div class="progress-fill-mini success"
-               [style.width.%]="totalHosts > 0 ? (onlineHosts / totalHosts) * 100 : 0">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="summary-card">
-      <div class="summary-icon running-icon">
-        <span class="material-symbols-outlined">play_circle</span>
-      </div>
-      <div class="summary-info">
-        <span class="summary-value">{{ runningServices }}</span>
-        <span class="summary-label">Running Services</span>
-      </div>
-      <div class="summary-detail">
-        <div class="progress-bar-mini">
-          <div class="progress-fill-mini success"
-               [style.width.%]="totalServices > 0 ? (runningServices / totalServices) * 100 : 0">
-          </div>
-        </div>
       </div>
     </div>
   </div>
 
-  <!-- Host Cards -->
+  <!-- Quick Links -->
   <div class="section-header">
-    <h2>Hosts Overview</h2>
-    <a routerLink="/hosts" class="btn btn-text">View All →</a>
+    <h2>Features</h2>
   </div>
 
-  <div class="hosts-grid">
-    @for (host of hosts; track trackByHostId($index, host)) {
-      <div class="host-card" [class.offline]="host.status === 'offline'">
-        <div class="host-card-header">
-          <div class="host-info">
-            <span class="status-indicator" [class.online]="host.status === 'online'" [class.offline]="host.status === 'offline'"></span>
-            <div>
-              <h3 class="host-name">
-                <a [routerLink]="['/hosts', host.id]">{{ host.name }}</a>
-              </h3>
-              <span class="host-ip">{{ host.ip }}</span>
-            </div>
-          </div>
-          <span class="status-badge" [class.online]="host.status === 'online'" [class.offline]="host.status === 'offline'">
-            {{ host.status }}
-          </span>
+  <div class="features-grid">
+    @for (f of features; track f.route) {
+      <a [routerLink]="f.route" class="feature-card">
+        <div class="feature-icon" [style.background]="f.color">
+          <span class="material-symbols-outlined">{{ f.icon }}</span>
         </div>
-
-        @if (getStats(host.id); as stats) {
-          <div class="host-stats">
-            <!-- CPU -->
-            <div class="stat-row">
-              <div class="stat-label">
-                <span class="material-symbols-outlined">memory</span>
-                CPU
-              </div>
-              <div class="stat-bar-container">
-                <div class="stat-bar">
-                  <div class="stat-bar-fill" [style.width.%]="stats.cpuUsage" [style.background]="getCpuColor(stats.cpuUsage)"></div>
-                </div>
-                <span class="stat-value">{{ stats.cpuUsage }}%</span>
-              </div>
-            </div>
-
-            <!-- Memory -->
-            <div class="stat-row">
-              <div class="stat-label">
-                <span class="material-symbols-outlined">developer_board</span>
-                RAM
-              </div>
-              <div class="stat-bar-container">
-                <div class="stat-bar">
-                  <div class="stat-bar-fill" [style.width.%]="getMemoryPercent(stats)" [style.background]="getCpuColor(getMemoryPercent(stats))"></div>
-                </div>
-                <span class="stat-value">{{ stats.memoryUsed | fileSize }} / {{ stats.memoryTotal | fileSize }}</span>
-              </div>
-            </div>
-
-            <!-- Disk -->
-            <div class="stat-row">
-              <div class="stat-label">
-                <span class="material-symbols-outlined">hard_drive</span>
-                Disk
-              </div>
-              <div class="stat-bar-container">
-                <div class="stat-bar">
-                  <div class="stat-bar-fill" [style.width.%]="getDiskPercent(stats)" [style.background]="getCpuColor(getDiskPercent(stats))"></div>
-                </div>
-                <span class="stat-value">{{ stats.diskUsed | fileSize }} / {{ stats.diskTotal | fileSize }}</span>
-              </div>
-            </div>
-          </div>
-        } @else {
-          <div class="host-stats-offline">
-            <span class="material-symbols-outlined">cloud_off</span>
-            <p>Host is unreachable</p>
-          </div>
-        }
-
-        <div class="host-card-footer">
-          <div class="service-summary">
-            <span class="material-symbols-outlined">widgets</span>
-            <span>{{ getServices(host.id).length }} services</span>
-            @if (getRunningCount(host.id) > 0) {
-              <span class="badge badge-success badge-sm">{{ getRunningCount(host.id) }} running</span>
-            }
-            @if (getStoppedCount(host.id) > 0) {
-              <span class="badge badge-warning badge-sm">{{ getStoppedCount(host.id) }} stopped</span>
-            }
-          </div>
-          <a [routerLink]="['/hosts', host.id]" class="btn btn-sm btn-primary">
-            Details
-          </a>
+        <div class="feature-info">
+          <h3>{{ f.label }}</h3>
+          <p>{{ f.desc }}</p>
         </div>
-      </div>
+        <span class="material-symbols-outlined feature-arrow">arrow_forward</span>
+      </a>
     }
   </div>
 
-  <!-- Recent Services Table -->
+  <!-- Hosts Overview -->
   <div class="section-header">
-    <h2>All Services</h2>
+    <h2>Hosts</h2>
+    <a routerLink="/hosts" class="btn btn-text">Manage →</a>
   </div>
 
-  <div class="table-container">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>Service</th>
-          <th>Host</th>
-          <th>Image</th>
-          <th>Status</th>
-          <th>CPU</th>
-          <th>Memory</th>
-          <th>Ports</th>
-        </tr>
-      </thead>
-      <tbody>
-        @for (host of hosts; track host.id) {
-          @for (svc of getServices(host.id); track svc.id) {
-            <tr>
-              <td class="service-name">
-                <span class="material-symbols-outlined">{{ svc.status === 'running' ? 'play_circle' : 'stop_circle' }}</span>
-                {{ svc.name }}
-              </td>
-              <td>
-                <a [routerLink]="['/hosts', host.id]">{{ host.name }}</a>
-              </td>
-              <td class="image-cell">{{ svc.image }}</td>
-              <td>
-                <span class="status-badge" [class]="'status-' + svc.status">{{ svc.status }}</span>
-              </td>
-              <td>{{ svc.cpuUsage }}%</td>
-              <td>{{ svc.memoryUsage | fileSize }} / {{ svc.memoryLimit | fileSize }}</td>
-              <td class="ports-cell">
-                @for (port of svc.ports; track port) {
-                  <span class="port-badge">{{ port }}</span>
-                }
-              </td>
-            </tr>
-          }
-        }
-      </tbody>
-    </table>
-  </div>
+  @if (hosts.length === 0) {
+    <div class="empty-state">
+      <span class="material-symbols-outlined">dns</span>
+      <p>No hosts configured yet</p>
+      <a routerLink="/hosts" class="btn btn-primary btn-sm">Add Host</a>
+    </div>
+  } @else {
+    <div class="hosts-grid">
+      @for (host of hosts; track trackByHostId($index, host)) {
+        <div class="host-card" [class.offline]="host.status === 'Offline'">
+          <div class="host-card-header">
+            <div class="host-info">
+              <span class="status-indicator" [class.online]="host.status === 'Online'" [class.offline]="host.status === 'Offline'"></span>
+              <div>
+                <h3 class="host-name">
+                  <a [routerLink]="['/hosts', host.id]">{{ host.name }}</a>
+                </h3>
+                <span class="host-ip">{{ host.ipAddress }}:{{ host.agentPort }}</span>
+              </div>
+            </div>
+            <span class="status-badge" [class.online]="host.status === 'Online'" [class.offline]="host.status === 'Offline'">
+              {{ host.status }}
+            </span>
+          </div>
+
+          <div class="host-containers">
+            <div class="container-count">
+              <span class="material-symbols-outlined">widgets</span>
+              {{ host.serviceCount }} service{{ host.serviceCount !== 1 ? 's' : '' }}
+              — {{ host.runningServiceCount }} running
+            </div>
+          </div>
+
+          <div class="host-card-footer">
+            <a [routerLink]="['/hosts', host.id]" class="btn btn-sm btn-primary">Details</a>
+          </div>
+        </div>
+      }
+    </div>
+  }
 </div>

@@ -28,6 +28,16 @@ export const routes: Routes = [
           import('./pages/deploy/deploy.component').then(m => m.DeployComponent),
       },
       {
+        path: 'spx',
+        loadComponent: () =>
+          import('./pages/spx-tracking/spx-tracking.component').then(m => m.SpxTrackingComponent),
+      },
+      {
+        path: 'camera',
+        loadComponent: () =>
+          import('./pages/camera/camera.component').then(m => m.CameraComponent),
+      },
+      {
         path: 'settings',
         loadComponent: () =>
           import('./pages/settings/settings.component').then(m => m.SettingsComponent),

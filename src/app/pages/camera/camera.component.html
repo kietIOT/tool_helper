@@ -1,0 +1,146 @@
+<div class="camera-page">
+  <div class="page-header">
+    <div>
+      <h1>Camera Control</h1>
+      <p class="subtitle">Yoosee Camera PTZ Control</p>
+    </div>
+    <div class="header-actions">
+      <div class="host-selector">
+        <span class="material-symbols-outlined">dns</span>
+        <select [(ngModel)]="selectedHostId" (ngModelChange)="onHostChange()">
+          @for (host of hosts; track host.id) {
+            <option [value]="host.id">{{ host.name }}</option>
+          }
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera IP Input -->
+  <div class="camera-setup card">
+    <div class="card-header">
+      <h2><span class="material-symbols-outlined">linked_camera</span> Camera Connection</h2>
+    </div>
+    <div class="card-body">
+      <div class="ip-input-group">
+        <span class="material-symbols-outlined">router</span>
+        <input type="text" [(ngModel)]="cameraIp" placeholder="Enter camera IP (e.g. 192.168.1.100)"
+               (keydown.enter)="fetchStreamUrl()" />
+        <button class="btn btn-primary btn-sm" (click)="fetchStreamUrl()" [disabled]="!cameraIp || loading">
+          <span class="material-symbols-outlined" [class.spin]="loading">
+            {{ loading ? 'progress_activity' : 'videocam' }}
+          </span>
+          Get Stream
+        </button>
+      </div>
+
+      @if (streamUrl) {
+        <div class="stream-url-display">
+          <span class="label">RTSP Stream URL</span>
+          <div class="url-row">
+            <code>{{ streamUrl }}</code>
+            <button class="btn-icon" (click)="copyStreamUrl()" title="Copy URL">
+              <span class="material-symbols-outlined">content_copy</span>
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- PTZ Control -->
+  <div class="control-area">
+    <div class="ptz-panel card">
+      <div class="card-header">
+        <h2><span class="material-symbols-outlined">gamepad</span> PTZ Control</h2>
+        <div class="mode-toggle">
+          <button class="mode-btn" [class.active]="mode === 'step'" (click)="mode = 'step'" title="Move and auto-stop">
+            <span class="material-symbols-outlined">touch_app</span> Step
+          </button>
+          <button class="mode-btn" [class.active]="mode === 'continuous'" (click)="mode = 'continuous'" title="Continuous move until stop">
+            <span class="material-symbols-outlined">swipe</span> Continuous
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (!cameraIp) {
+          <div class="empty-state compact">
+            <span class="material-symbols-outlined">videocam_off</span>
+            <p>Enter a camera IP to enable PTZ controls</p>
+          </div>
+        } @else {
+          <div class="dpad-container">
+            <!-- Up -->
+            <button class="dpad-btn up" (click)="move('up')" [disabled]="!!activeAction"
+                    [class.active]="activeAction === 'up'" title="Move Up">
+              <span class="material-symbols-outlined">arrow_upward</span>
+            </button>
+            <!-- Left -->
+            <button class="dpad-btn left" (click)="move('left')" [disabled]="!!activeAction"
+                    [class.active]="activeAction === 'left'" title="Move Left">
+              <span class="material-symbols-outlined">arrow_back</span>
+            </button>
+            <!-- Stop (center) -->
+            <button class="dpad-btn center" (click)="stop()" [disabled]="!!activeAction && activeAction !== 'stop'"
+                    [class.active]="activeAction === 'stop'" title="Stop">
+              <span class="material-symbols-outlined">stop_circle</span>
+            </button>
+            <!-- Right -->
+            <button class="dpad-btn right" (click)="move('right')" [disabled]="!!activeAction"
+                    [class.active]="activeAction === 'right'" title="Move Right">
+              <span class="material-symbols-outlined">arrow_forward</span>
+            </button>
+            <!-- Down -->
+            <button class="dpad-btn down" (click)="move('down')" [disabled]="!!activeAction"
+                    [class.active]="activeAction === 'down'" title="Move Down">
+              <span class="material-symbols-outlined">arrow_downward</span>
+            </button>
+          </div>
+
+          <div class="mode-hint">
+            Mode: <strong>{{ mode === 'step' ? 'Step (move & auto-stop)' : 'Continuous (manual stop required)' }}</strong>
+          </div>
+        }
+
+        @if (statusMsg) {
+          <div class="status-message">
+            <span class="material-symbols-outlined">info</span>
+            {{ statusMsg }}
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Supported Actions -->
+    <div class="actions-panel card">
+      <div class="card-header">
+        <h2><span class="material-symbols-outlined">list</span> Supported Actions</h2>
+        <button class="btn-icon" (click)="loadActions()" [disabled]="loadingActions" title="Reload">
+          <span class="material-symbols-outlined" [class.spin]="loadingActions">refresh</span>
+        </button>
+      </div>
+      <div class="card-body">
+        @if (loadingActions) {
+          <div class="loading-state compact">
+            <span class="material-symbols-outlined spin">progress_activity</span>
+            <p>Loading...</p>
+          </div>
+        } @else if (actions.length === 0) {
+          <div class="empty-state compact">
+            <span class="material-symbols-outlined">info</span>
+            <p>No actions available</p>
+          </div>
+        } @else {
+          <ul class="action-list">
+            @for (action of actions; track action) {
+              <li class="action-item" (click)="cameraIp ? move(action) : null" [class.clickable]="!!cameraIp">
+                <span class="material-symbols-outlined">chevron_right</span>
+                {{ action }}
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+  </div>
+</div>

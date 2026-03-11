@@ -1,99 +1,55 @@
-import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, of } from 'rxjs';
-import { Host, HostFormData } from '../models';
-
-const STORAGE_KEY = 'tool_helper_hosts';
+import { Injectable, inject } from '@angular/core';
+import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { HostDto, DashboardDto } from '../models';
+import { HostManagementApiService } from './host-management-api.service';
 
 @Injectable({ providedIn: 'root' })
 export class HostStore {
-  private hostsSubject = new BehaviorSubject<Host[]>(this.loadHosts());
+  private api = inject(HostManagementApiService);
+
+  private hostsSubject = new BehaviorSubject<HostDto[]>([]);
+  private dashboardSubject = new BehaviorSubject<DashboardDto | null>(null);
+  private loadingSubject = new BehaviorSubject<boolean>(false);
 
   hosts$ = this.hostsSubject.asObservable();
+  dashboard$ = this.dashboardSubject.asObservable();
+  loading$ = this.loadingSubject.asObservable();
 
-  private loadHosts(): Host[] {
-    if (typeof localStorage === 'undefined') return this.getDefaultHosts();
-    try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      return data ? JSON.parse(data) : this.getDefaultHosts();
-    } catch {
-      return this.getDefaultHosts();
-    }
+  // ============ Dashboard ============
+
+  loadDashboard(): void {
+    this.loadingSubject.next(true);
+    this.api.getDashboard().subscribe(res => {
+      if (res.isSuccess && res.data) {
+        this.dashboardSubject.next(res.data);
+        this.hostsSubject.next(res.data.hosts);
+      }
+      this.loadingSubject.next(false);
+    });
   }
 
-  private saveHosts(hosts: Host[]): void {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(hosts));
-    }
-    this.hostsSubject.next(hosts);
+  // ============ Host List ============
+
+  loadHosts(activeOnly?: boolean): void {
+    this.loadingSubject.next(true);
+    this.api.getHosts(activeOnly).subscribe(res => {
+      if (res.isSuccess && res.data) {
+        this.hostsSubject.next(res.data);
+      }
+      this.loadingSubject.next(false);
+    });
   }
 
-  private getDefaultHosts(): Host[] {
-    return [
-      {
-        id: 'host-1',
-        name: 'Production Server',
-        url: 'http://192.168.1.10:3000',
-        ip: '192.168.1.10',
-        status: 'unknown',
-        description: 'Main production server',
-      },
-      {
-        id: 'host-2',
-        name: 'Staging Server',
-        url: 'http://192.168.1.11:3000',
-        ip: '192.168.1.11',
-        status: 'unknown',
-        description: 'Staging / QA environment',
-      },
-      {
-        id: 'host-3',
-        name: 'Dev Server',
-        url: 'http://192.168.1.12:3000',
-        ip: '192.168.1.12',
-        status: 'unknown',
-        description: 'Development & testing',
-      },
-    ];
-  }
-
-  getHosts(): Host[] {
+  getHosts(): HostDto[] {
     return this.hostsSubject.getValue();
   }
 
-  getHostById(id: string): Host | undefined {
+  getHostById(id: string): HostDto | undefined {
     return this.getHosts().find(h => h.id === id);
   }
 
-  addHost(data: HostFormData): Host {
-    const host: Host = {
-      id: 'host-' + Date.now(),
-      name: data.name,
-      url: data.url,
-      ip: data.ip,
-      description: data.description,
-      status: 'unknown',
-    };
-    const hosts = [...this.getHosts(), host];
-    this.saveHosts(hosts);
-    return host;
-  }
-
-  updateHost(id: string, data: Partial<HostFormData>): void {
-    const hosts = this.getHosts().map(h =>
-      h.id === id ? { ...h, ...data } : h
-    );
-    this.saveHosts(hosts);
-  }
-
-  updateHostStatus(id: string, status: Host['status']): void {
-    const hosts = this.getHosts().map(h =>
-      h.id === id ? { ...h, status, lastChecked: new Date().toISOString() } : h
-    );
-    this.saveHosts(hosts);
-  }
-
-  removeHost(id: string): void {
-    const hosts = this.getHosts().filter(h => h.id !== id);
-    this.saveHosts(hosts);
+  getDashboard(): DashboardDto | null {
+    return this.dashboardSubject.getValue();
   }
 }
+

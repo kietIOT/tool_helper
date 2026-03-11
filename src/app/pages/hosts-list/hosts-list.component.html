@@ -22,16 +22,33 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label>Host Name</label>
-            <input type="text" [(ngModel)]="formData.name" placeholder="e.g. Production Server" />
+            <label>Host Name *</label>
+            <input type="text" [(ngModel)]="formData.name" placeholder="e.g. UAT Server 192.168.100.13" />
           </div>
           <div class="form-group">
-            <label>IP Address</label>
-            <input type="text" [(ngModel)]="formData.ip" placeholder="e.g. 192.168.1.10" />
+            <label>IP Address *</label>
+            <input type="text" [(ngModel)]="formData.ipAddress" placeholder="e.g. 192.168.100.13" />
           </div>
-          <div class="form-group">
-            <label>Tool Helper API URL</label>
-            <input type="text" [(ngModel)]="formData.url" placeholder="e.g. http://192.168.1.10:3000" />
+          <div class="form-row">
+            <div class="form-group">
+              <label>Agent Port</label>
+              <input type="number" [(ngModel)]="formData.agentPort" placeholder="5155" />
+              <span class="form-hint">HelperTool.API port (default: 5155)</span>
+            </div>
+            <div class="form-group">
+              <label>SSH Port</label>
+              <input type="number" [(ngModel)]="formData.sshPort" placeholder="22" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>SSH Username</label>
+              <input type="text" [(ngModel)]="formData.sshUsername" placeholder="e.g. root" />
+            </div>
+            <div class="form-group">
+              <label>OS</label>
+              <input type="text" [(ngModel)]="formData.os" placeholder="e.g. Ubuntu" />
+            </div>
           </div>
           <div class="form-group">
             <label>Description (optional)</label>
@@ -41,7 +58,10 @@
         <div class="modal-footer">
           <button class="btn btn-outline" (click)="closeForm()">Cancel</button>
           <button class="btn btn-primary" (click)="saveHost()"
-                  [disabled]="!formData.name || !formData.url || !formData.ip">
+                  [disabled]="!formData.name || !formData.ipAddress || saving">
+            @if (saving) {
+              <span class="material-symbols-outlined spin">progress_activity</span>
+            }
             {{ editingHost ? 'Update' : 'Add Host' }}
           </button>
         </div>
@@ -57,7 +77,8 @@
           <th>Status</th>
           <th>Name</th>
           <th>IP Address</th>
-          <th>API URL</th>
+          <th>Agent Port</th>
+          <th>Services</th>
           <th>Description</th>
           <th>Last Checked</th>
           <th>Actions</th>
@@ -68,17 +89,20 @@
           <tr>
             <td>
               <span class="status-dot"
-                    [class.online]="host.status === 'online'"
-                    [class.offline]="host.status === 'offline'">
+                    [class.online]="host.status === 'Online'"
+                    [class.offline]="host.status === 'Offline'">
               </span>
             </td>
             <td>
               <a [routerLink]="['/hosts', host.id]" class="host-link">{{ host.name }}</a>
             </td>
-            <td class="mono">{{ host.ip }}</td>
-            <td class="mono url-cell">{{ host.url }}</td>
+            <td class="mono">{{ host.ipAddress }}</td>
+            <td class="mono">{{ host.agentPort }}</td>
+            <td>
+              <span class="badge badge-info">{{ host.runningServiceCount }}/{{ host.serviceCount }}</span>
+            </td>
             <td class="desc-cell">{{ host.description }}</td>
-            <td class="time-cell">{{ host.lastChecked ? (host.lastChecked | date:'short') : 'Never' }}</td>
+            <td class="time-cell">{{ host.lastCheckedAt ? (host.lastCheckedAt | date:'short') : 'Never' }}</td>
             <td class="actions-cell">
               <button class="btn-icon" title="Edit" (click)="openEditForm(host)">
                 <span class="material-symbols-outlined">edit</span>
@@ -93,7 +117,7 @@
           </tr>
         } @empty {
           <tr>
-            <td colspan="7" class="empty-state">
+            <td colspan="8" class="empty-state">
               <span class="material-symbols-outlined">dns</span>
               <p>No hosts configured yet</p>
               <button class="btn btn-primary btn-sm" (click)="openAddForm()">Add your first host</button>

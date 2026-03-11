@@ -1,3 +1,3 @@
 export * from './host-store.service';
-export * from './host-api.service';
-export * from './mock-data.service';
+export * from './host-management-api.service';
+export * from './tool-helper-api.service';

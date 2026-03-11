@@ -1,0 +1,358 @@
+<div class="spx-page">
+  <div class="page-header">
+    <div>
+      <h1>SPX Tracking</h1>
+      <p class="subtitle">Lookup and track SPX Express shipments</p>
+    </div>
+    <div class="header-actions">
+      <div class="host-selector">
+        <span class="material-symbols-outlined">dns</span>
+        <select [(ngModel)]="selectedHostId" (ngModelChange)="onHostChange()">
+          @for (host of hosts; track host.id) {
+            <option [value]="host.id">{{ host.name }}</option>
+          }
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab" [class.active]="activeTab === 'tracking'" (click)="activeTab = 'tracking'">
+      <span class="material-symbols-outlined">track_changes</span>
+      Active Tracking
+    </button>
+    <button class="tab" [class.active]="activeTab === 'lookup'" (click)="activeTab = 'lookup'">
+      <span class="material-symbols-outlined">search</span>
+      Express Lookup
+    </button>
+  </div>
+
+  <!-- Tracking Tab -->
+  @if (activeTab === 'tracking') {
+    <div class="tracking-content">
+      <!-- Subscribe -->
+      <div class="subscribe-bar">
+        <div class="subscribe-input-group">
+          <span class="material-symbols-outlined">add_circle</span>
+          <input type="text" [(ngModel)]="subscribeInput"
+                 placeholder="Enter SPX tracking number (e.g. SPXVN05...)"
+                 (keyup.enter)="subscribe()" />
+          <button class="btn btn-primary" (click)="subscribe()"
+                  [disabled]="subscribing || !subscribeInput.trim()">
+            @if (subscribing) {
+              <span class="material-symbols-outlined spin">progress_activity</span>
+            } @else {
+              Subscribe
+            }
+          </button>
+        </div>
+        @if (subscribeMessage) {
+          <div class="subscribe-msg">{{ subscribeMessage }}</div>
+        }
+      </div>
+
+      <!-- Actions -->
+      <div class="tracking-actions">
+        <span class="tracking-count">{{ activeShipments.length }} active shipment(s)</span>
+        <div class="action-btns">
+          <button class="btn btn-outline btn-sm" (click)="triggerPoll()" [disabled]="polling">
+            @if (polling) {
+              <span class="material-symbols-outlined spin">progress_activity</span>
+            } @else {
+              <span class="material-symbols-outlined">sync</span>
+            }
+            Poll Now
+          </button>
+          <button class="btn btn-outline btn-sm" (click)="loadActiveShipments()" [disabled]="loadingActive">
+            <span class="material-symbols-outlined" [class.spin]="loadingActive">refresh</span>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Shipments Table -->
+      @if (loadingActive && activeShipments.length === 0) {
+        <div class="loading-state">
+          <span class="material-symbols-outlined spin">progress_activity</span>
+          <p>Loading shipments...</p>
+        </div>
+      } @else if (activeShipments.length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-outlined">local_shipping</span>
+          <p>No active shipments being tracked</p>
+          <span class="empty-hint">Subscribe to a tracking number above to start</span>
+        </div>
+      } @else {
+        <div class="shipments-grid">
+          @for (s of activeShipments; track s.spxTn) {
+            <div class="shipment-card" (click)="viewStatus(s.spxTn)">
+              <div class="sc-header">
+                <div class="sc-tn">
+                  <span class="material-symbols-outlined" [style.color]="getStatusColor(s.status)">
+                    {{ getStatusIcon(s.status) }}
+                  </span>
+                  <span class="tn-text">{{ s.spxTn }}</span>
+                </div>
+                <span class="status-badge" [style.background]="getStatusColor(s.status) + '20'"
+                      [style.color]="getStatusColor(s.status)">
+                  {{ s.status }}
+                </span>
+              </div>
+              @if (s.clientOrderId) {
+                <div class="sc-order">Order: {{ s.clientOrderId }}</div>
+              }
+              <div class="sc-info">
+                @if (s.lastMilestoneName) {
+                  <span class="sc-milestone">{{ s.lastMilestoneName }}</span>
+                }
+                @if (s.lastMessage) {
+                  <span class="sc-message">{{ s.lastMessage }}</span>
+                }
+              </div>
+              <div class="sc-footer">
+                @if (s.currentLocationName) {
+                  <span class="sc-location">
+                    <span class="material-symbols-outlined">location_on</span>
+                    {{ s.currentLocationName }}
+                  </span>
+                }
+                @if (s.lastEventTime) {
+                  <span class="sc-time">{{ s.lastEventTime }}</span>
+                }
+              </div>
+              <div class="sc-actions">
+                <button class="btn btn-sm btn-outline" (click)="viewStatus(s.spxTn); $event.stopPropagation()">
+                  <span class="material-symbols-outlined">visibility</span> Details
+                </button>
+                <button class="btn btn-sm btn-danger-outline" (click)="unsubscribe(s.spxTn); $event.stopPropagation()">
+                  <span class="material-symbols-outlined">link_off</span> Unsubscribe
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Shipment Detail Modal -->
+      @if (selectedShipment || loadingDetail) {
+        <div class="modal-overlay" (click)="closeDetail()">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h2>
+                <span class="material-symbols-outlined" [style.color]="selectedShipment ? getStatusColor(selectedShipment.status) : '#6b7280'">
+                  {{ selectedShipment ? getStatusIcon(selectedShipment.status) : 'hourglass_empty' }}
+                </span>
+                {{ selectedShipment ? selectedShipment.spxTn : 'Loading...' }}
+              </h2>
+              <button class="btn-icon" (click)="closeDetail()">
+                <span class="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            @if (loadingDetail) {
+              <div class="modal-body">
+                <div class="loading-state compact">
+                  <span class="material-symbols-outlined spin">progress_activity</span>
+                  <p>Loading status...</p>
+                </div>
+              </div>
+            } @else if (selectedShipment) {
+              <div class="modal-body">
+                <!-- Status summary -->
+                <div class="detail-summary">
+                  <div class="detail-row">
+                    <span class="detail-label">Status</span>
+                    <span class="status-badge" [style.background]="getStatusColor(selectedShipment.status) + '20'"
+                          [style.color]="getStatusColor(selectedShipment.status)">
+                      {{ selectedShipment.status }}
+                    </span>
+                  </div>
+                  @if (selectedShipment.clientOrderId) {
+                    <div class="detail-row">
+                      <span class="detail-label">Order ID</span>
+                      <span class="detail-value mono">{{ selectedShipment.clientOrderId }}</span>
+                    </div>
+                  }
+                  @if (selectedShipment.lastMessage) {
+                    <div class="detail-row">
+                      <span class="detail-label">Last Update</span>
+                      <span class="detail-value">{{ selectedShipment.lastMessage }}</span>
+                    </div>
+                  }
+                  @if (selectedShipment.currentLocationName) {
+                    <div class="detail-row">
+                      <span class="detail-label">Current Location</span>
+                      <span class="detail-value">{{ selectedShipment.currentLocationName }}</span>
+                    </div>
+                  }
+                  @if (selectedShipment.currentFullAddress) {
+                    <div class="detail-row">
+                      <span class="detail-label">Address</span>
+                      <span class="detail-value">{{ selectedShipment.currentFullAddress }}</span>
+                    </div>
+                  }
+                  @if (selectedShipment.nextLocationName) {
+                    <div class="detail-row">
+                      <span class="detail-label">Next Location</span>
+                      <span class="detail-value">{{ selectedShipment.nextLocationName }}</span>
+                    </div>
+                  }
+                </div>
+
+                <!-- Events timeline -->
+                @if (selectedShipment.events.length > 0) {
+                  <h3 class="events-title">Tracking History</h3>
+                  <div class="events-timeline">
+                    @for (ev of selectedShipment.events; track $index) {
+                      <div class="event-item" [class.first]="$first">
+                        <div class="event-dot"></div>
+                        <div class="event-line"></div>
+                        <div class="event-content">
+                          <div class="event-header">
+                            @if (ev.milestoneName) {
+                              <span class="event-milestone">{{ ev.milestoneName }}</span>
+                            }
+                            <span class="event-time">{{ ev.eventTime }}</span>
+                          </div>
+                          @if (ev.buyerMessage) {
+                            <p class="event-message">{{ ev.buyerMessage }}</p>
+                          }
+                          @if (ev.description) {
+                            <p class="event-desc">{{ ev.description }}</p>
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Lookup Tab -->
+  @if (activeTab === 'lookup') {
+    <div class="lookup-content">
+      <div class="lookup-bar">
+        <div class="lookup-input-group">
+          <span class="material-symbols-outlined">search</span>
+          <input type="text" [(ngModel)]="lookupOrderId"
+                 placeholder="Enter SPX tracking number or order ID..."
+                 (keyup.enter)="lookup()" />
+          <button class="btn btn-primary" (click)="lookup()"
+                  [disabled]="lookupLoading || !lookupOrderId.trim()">
+            @if (lookupLoading) {
+              <span class="material-symbols-outlined spin">progress_activity</span>
+            } @else {
+              Search
+            }
+          </button>
+        </div>
+      </div>
+
+      @if (lookupError) {
+        <div class="error-banner">
+          <span class="material-symbols-outlined">error</span>
+          {{ lookupError }}
+        </div>
+      }
+
+      @if (lookupResult) {
+        <div class="lookup-result">
+          <!-- SLS Info -->
+          @if (lookupResult.slsTrackingInfo; as sls) {
+            <div class="card">
+              <div class="card-header">
+                <h2>
+                  <span class="material-symbols-outlined">local_shipping</span>
+                  Shipment Info
+                </h2>
+              </div>
+              <div class="card-body">
+                <div class="info-grid">
+                  @if (sls.slsTrackingNumber) {
+                    <div class="info-item">
+                      <span class="info-label">Tracking Number</span>
+                      <span class="info-value mono">{{ sls.slsTrackingNumber }}</span>
+                    </div>
+                  }
+                  @if (sls.clientOrderId) {
+                    <div class="info-item">
+                      <span class="info-label">Order ID</span>
+                      <span class="info-value mono">{{ sls.clientOrderId }}</span>
+                    </div>
+                  }
+                  @if (sls.receiverName) {
+                    <div class="info-item">
+                      <span class="info-label">Receiver</span>
+                      <span class="info-value">{{ sls.receiverName }}</span>
+                    </div>
+                  }
+                  @if (sls.receiverTypeName) {
+                    <div class="info-item">
+                      <span class="info-label">Type</span>
+                      <span class="info-value">{{ sls.receiverTypeName }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <!-- Tracking Records -->
+            @if (sls.records && sls.records.length > 0) {
+              <div class="card">
+                <div class="card-header">
+                  <h2>
+                    <span class="material-symbols-outlined">timeline</span>
+                    Tracking Records ({{ sls.records.length }})
+                  </h2>
+                </div>
+                <div class="card-body">
+                  <div class="events-timeline">
+                    @for (rec of sls.records; track $index) {
+                      <div class="event-item" [class.first]="$first">
+                        <div class="event-dot"></div>
+                        <div class="event-line"></div>
+                        <div class="event-content">
+                          <div class="event-header">
+                            @if (rec.milestoneName) {
+                              <span class="event-milestone">{{ rec.milestoneName }}</span>
+                            }
+                            <span class="event-time">{{ formatTimestamp(rec.actualTime) }}</span>
+                          </div>
+                          @if (rec.buyerDescription) {
+                            <p class="event-message">{{ rec.buyerDescription }}</p>
+                          }
+                          @if (rec.description) {
+                            <p class="event-desc">{{ rec.description }}</p>
+                          }
+                          @if (rec.currentLocation) {
+                            <div class="event-location">
+                              <span class="material-symbols-outlined">location_on</span>
+                              {{ rec.currentLocation.locationName }}
+                              @if (rec.currentLocation.fullAddress) {
+                                — {{ rec.currentLocation.fullAddress }}
+                              }
+                            </div>
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              </div>
+            }
+          } @else {
+            <div class="empty-state">
+              <span class="material-symbols-outlined">info</span>
+              <p>No tracking information available for this order</p>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

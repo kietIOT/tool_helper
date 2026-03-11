@@ -2,8 +2,15 @@ import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
-import { Host, DeployRequest, DeployResponse } from '../../models';
-import { HostStore, HostApiService } from '../../services';
+import {
+  HostDto,
+  HostDetailDto,
+  ServiceDto,
+  DeployByNameRequest,
+  DeploymentResultDto,
+  DeploymentHistoryDto,
+} from '../../models';
+import { HostStore, HostManagementApiService } from '../../services';
 
 @Component({
   selector: 'app-deploy',
@@ -14,35 +21,31 @@ import { HostStore, HostApiService } from '../../services';
 })
 export class DeployComponent implements OnInit, OnDestroy {
   private hostStore = inject(HostStore);
-  private api = inject(HostApiService);
+  private api = inject(HostManagementApiService);
   private destroy$ = new Subject<void>();
 
-  hosts: Host[] = [];
+  hosts: HostDto[] = [];
   selectedHostId = '';
+  services: ServiceDto[] = [];
+  selectedServiceName = '';
+  loadingServices = false;
   deploying = false;
-  result: DeployResponse | null = null;
+  result: DeploymentResultDto | null = null;
+  errorMessage: string | null = null;
 
-  form: DeployRequest = {
-    serviceName: '',
-    image: '',
-    tag: 'latest',
-    ports: [],
-    envVars: {},
-    volumes: [],
-    restart: 'unless-stopped',
-  };
-
-  portsInput = '';
-  volumesInput = '';
-  envInput = '';
+  // Deploy history
+  history: DeploymentHistoryDto[] = [];
+  loadingHistory = false;
 
   ngOnInit(): void {
     this.hostStore.hosts$.pipe(takeUntil(this.destroy$)).subscribe(hosts => {
       this.hosts = hosts;
       if (hosts.length > 0 && !this.selectedHostId) {
         this.selectedHostId = hosts[0].id;
+        this.loadServices();
       }
     });
+    this.hostStore.loadHosts(true);
   }
 
   ngOnDestroy(): void {
@@ -50,60 +53,89 @@ export class DeployComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  get selectedHost(): Host | undefined {
+  get selectedHost(): HostDto | undefined {
     return this.hosts.find(h => h.id === this.selectedHostId);
   }
 
-  deploy(): void {
-    const host = this.selectedHost;
-    if (!host || !this.form.serviceName || !this.form.image) return;
+  onHostChange(): void {
+    this.selectedServiceName = '';
+    this.result = null;
+    this.errorMessage = null;
+    this.history = [];
+    this.loadServices();
+  }
 
-    this.form.ports = this.portsInput.split(',').map(p => p.trim()).filter(Boolean);
-    this.form.volumes = this.volumesInput.split(',').map(v => v.trim()).filter(Boolean);
-
-    // Parse env vars
-    const envVars: Record<string, string> = {};
-    this.envInput.split('\n').forEach(line => {
-      const idx = line.indexOf('=');
-      if (idx > 0) {
-        envVars[line.substring(0, idx).trim()] = line.substring(idx + 1).trim();
+  loadServices(): void {
+    if (!this.selectedHostId) return;
+    this.loadingServices = true;
+    this.services = [];
+    this.api.getHost(this.selectedHostId).pipe(takeUntil(this.destroy$)).subscribe(res => {
+      if (res.isSuccess && res.data) {
+        this.services = res.data.services.filter(s => s.isActive);
       }
+      this.loadingServices = false;
     });
-    this.form.envVars = envVars;
+  }
+
+  onServiceChange(): void {
+    this.result = null;
+    this.errorMessage = null;
+    if (this.selectedServiceName) {
+      this.loadHistory();
+    }
+  }
+
+  loadHistory(): void {
+    if (!this.selectedServiceName) return;
+    this.loadingHistory = true;
+    this.api.getDeploymentHistoryByName(this.selectedServiceName, 10)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(res => {
+        this.history = res.isSuccess && res.data ? res.data : [];
+        this.loadingHistory = false;
+      });
+  }
+
+  deploy(): void {
+    if (!this.selectedServiceName) return;
 
     this.deploying = true;
     this.result = null;
+    this.errorMessage = null;
 
-    // Mock deploy for demo
-    setTimeout(() => {
-      this.result = {
-        success: true,
-        message: `Service "${this.form.serviceName}" deployed successfully on ${host.name}`,
-        containerId: 'sha256:' + Math.random().toString(36).substring(2, 14),
-      };
+    const request: DeployByNameRequest = {
+      serviceName: this.selectedServiceName,
+      triggeredBy: 'WebUI',
+    };
+
+    this.api.deploy(request).pipe(takeUntil(this.destroy$)).subscribe(res => {
+      if (res.isSuccess && res.data) {
+        this.result = res.data;
+      } else {
+        this.errorMessage = res.message || 'Deploy failed';
+        if (res.data) {
+          this.result = res.data;
+        }
+      }
       this.deploying = false;
-    }, 2000);
-
-    // Real API:
-    // this.api.deploy(host, this.form).pipe(takeUntil(this.destroy$)).subscribe(res => {
-    //   this.result = res;
-    //   this.deploying = false;
-    // });
+      this.loadHistory();
+    });
   }
 
   resetForm(): void {
-    this.form = {
-      serviceName: '',
-      image: '',
-      tag: 'latest',
-      ports: [],
-      envVars: {},
-      volumes: [],
-      restart: 'unless-stopped',
-    };
-    this.portsInput = '';
-    this.volumesInput = '';
-    this.envInput = '';
+    this.selectedServiceName = '';
     this.result = null;
+    this.errorMessage = null;
+    this.history = [];
+  }
+
+  getStatusColor(status: string): string {
+    switch (status) {
+      case 'Success': return '#22c55e';
+      case 'Failed': return '#ef4444';
+      case 'InProgress': return '#f59e0b';
+      case 'Pending': return '#64748b';
+      default: return '#94a3b8';
+    }
   }
 }
